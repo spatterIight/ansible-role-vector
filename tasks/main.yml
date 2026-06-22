@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2023 Slavi Pantaleev
+# SPDX-FileCopyrightText: 2025 spatterlight
+# SPDX-FileCopyrightText: 2025, 2026 Suguru Hirahara
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+---
+- name: Perform Vector installation tasks
+  when: vector_enabled | bool
+  tags:
+    - setup-all
+    - setup-vector
+    - install-all
+    - install-vector
+  block:
+    - name: Validate Vector configuration
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/validate_config.yml"
+    - name: Install Vector
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/install.yml"
+
+- name: Perform Vector uninstallation tasks
+  when: not vector_enabled | bool
+  tags:
+    - setup-all
+    - setup-vector
+  block:
+    - name: Uninstall Vector
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/uninstall.yml"

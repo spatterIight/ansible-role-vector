@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: 2023 Slavi Pantaleev
+# SPDX-FileCopyrightText: 2025 spatterlight
+# SPDX-FileCopyrightText: 2025, 2026 Suguru Hirahara
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+---
+- name: Check existence of Vector systemd service
+  ansible.builtin.stat:
+    path: "{{ devture_systemd_docker_base_systemd_path }}/{{ vector_identifier }}.service"
+  register: vector_service_stat
+
+- name: Uninstall Vector systemd services and files
+  when: vector_service_stat.stat.exists | bool
+  block:
+    - name: Ensure Vector systemd service is stopped
+      ansible.builtin.service:
+        name: "{{ vector_identifier }}"
+        state: stopped
+        enabled: false
+        daemon_reload: true
+
+    - name: Ensure Vector systemd service does not exist
+      ansible.builtin.file:
+        path: "{{ devture_systemd_docker_base_systemd_path }}/{{ vector_identifier }}.service"
+        state: absent
+
+    - name: Ensure Vector support files do not exist
+      ansible.builtin.file:
+        path: "{{ vector_base_path }}/{{ item }}"
+        state: absent
+      with_items:
+        - env
+        - labels
+
+    - name: Ensure Vector local data path does not exist if empty
+      ansible.builtin.command:
+        cmd: "rmdir {{ vector_data_path }}"
+      register: vector_data_path_deletion_result
+      changed_when: vector_data_path_deletion_result.rc == 0
+      failed_when: false
+
+    - name: Ensure Vector local media path does not exist if empty
+      ansible.builtin.command:
+        cmd: "rmdir {{ vector_media_path }}"
+      register: vector_media_path_deletion_result
+      changed_when: vector_media_path_deletion_result.rc == 0
+      failed_when: false
+
+    - name: Ensure Vector base path does not exist if empty
+      ansible.builtin.command:
+        cmd: "rmdir {{ vector_base_path }}"
+      register: vector_base_path_deletion_result
+      changed_when: vector_base_path_deletion_result.rc == 0
+      failed_when: false
+
+    - name: Ensure Vector container network does not exist
+      when: vector_container_network_deletion_enabled
+      block:
+        - name: Ensure Vector container network does not exist via community.docker.docker_network
+          when: devture_systemd_docker_base_container_network_creation_method == 'ansible-module'
+          community.docker.docker_network:
+            name: "{{ vector_container_network }}"
+            state: absent
+          register: vector_network_deletion_result
+
+        - name: Ensure Vector container network does not exist via ansible.builtin.command
+          when: devture_systemd_docker_base_container_network_creation_method == 'command'
+          ansible.builtin.command:
+            cmd: >-
+              {{ devture_systemd_docker_base_host_command_docker }} network rm
+              {{ vector_container_network }}
+          register: vector_network_deletion_result
+          changed_when: vector_container_network in vector_network_deletion_result.stdout
+
+- name: Check existence of Vector local data path
+  ansible.builtin.stat:
+    path: "{{ vector_data_path }}"
+  register: vector_data_path_stat
+
+# We just want to notify the user. Deleting data is too destructive.
+- name: Inject the message about the remaining Vector local data path
+  when: vector_data_path_stat.stat.exists | bool
+  ansible.builtin.set_fact:
+    devture_playbook_runtime_messages_list: |
+      {{
+        devture_playbook_runtime_messages_list | default([])
+        +
+        [
+          "Note: As the local Vector instance has been removed, some old data remains in `" + vector_data_path + "`. Feel free to delete it."
+        ]
+      }}

@@ -1,0 +1,71 @@
+{#
+SPDX-FileCopyrightText: 2023, 2025 Slavi Pantaleev
+SPDX-FileCopyrightText: 2024 Nikita Chernyi
+SPDX-FileCopyrightText: 2025 spatterlight
+SPDX-FileCopyrightText: 2025, 2026 Suguru Hirahara
+
+SPDX-License-Identifier: AGPL-3.0-or-later
+#}
+
+[Unit]
+Description=Vector ({{ vector_identifier }})
+{% for service in vector_systemd_required_services_list %}
+Requires={{ service }}
+After={{ service }}
+{% endfor %}
+{% for service in vector_systemd_wanted_services_list %}
+Wants={{ service }}
+{% endfor %}
+
+[Service]
+Type=simple
+Environment="HOME={{ devture_systemd_docker_base_systemd_unit_home_path }}"
+ExecStartPre={{ devture_systemd_docker_base_host_command_sh }} -c '{{ vector_container_cleanup_command | trim | replace("\n", " ") }}'
+
+ExecStartPre={{ devture_systemd_docker_base_host_command_docker }} create \
+      --rm \
+      --name={{ vector_identifier }} \
+      --log-driver=none \
+      --user={{ vector_uid }}:{{ vector_gid }} \
+      --cap-drop=ALL \
+      --read-only \
+      --network={{ vector_container_network }} \
+      {% if vector_container_http_bind_port %}
+      -p {{ vector_container_http_bind_port }}:{{ vector_container_http_port }} \
+      {% endif %}
+      --env-file={{ vector_base_path }}/env \
+      --label-file={{ vector_base_path }}/labels \
+      {% if vector_headscale_config_path %}
+      --mount type=bind,src={{ vector_headscale_config_path }}/config.yaml,dst=/etc/headscale/config.yaml{{ (',' + vector_headscale_config_path_mount_options) if vector_headscale_config_path_mount_options | default('') and vector_headscale_config_path_mount_options != 'readwrite' else '' }} \
+      {% endif %}
+      --mount type=bind,src={{ vector_base_path }}/config.yaml,dst=/etc/vector/config.yaml \
+      --mount type=bind,src={{ vector_data_path }},dst=/var/lib/vector \
+      {% if headscale_extra_records_path_enabled | default(false) %}
+      --mount type=bind,src={{ headscale_data_path }}/extra-records.json,dst=/var/lib/vector/extra_records.json \
+      {% endif %}
+      {% if vector_config_integration_docker_enabled and vector_config_integration_docker_endpoint and vector_docker_endpoint_is_unix_socket %}
+      --mount type=bind,src={{ vector_config_integration_docker_endpoint | replace('unix://', '') }},dst=/var/run/docker.sock,ro \
+      {% endif %}
+      {% for volume in vector_container_additional_volumes %}
+      --mount type={{ volume.type | default('bind' if '/' in volume.src else 'volume') }},src={{ volume.src }},dst={{ volume.dst }}{{ (',' + volume.options) if volume.options | default('') else '' }} \
+      {% endfor %}
+      {% for arg in vector_container_extra_arguments %}
+      {{ arg }} \
+      {% endfor %}
+      {{ vector_container_image }}
+
+{% for network in vector_container_additional_networks %}
+ExecStartPre={{ devture_systemd_docker_base_host_command_docker }} network connect {{ network }} {{ vector_identifier }}
+{% endfor %}
+
+ExecStart={{ devture_systemd_docker_base_host_command_docker }} start --attach {{ vector_identifier }}
+
+ExecStop=-{{ devture_systemd_docker_base_host_command_sh }} -c '{{ devture_systemd_docker_base_host_command_docker }} stop -t {{ vector_container_stop_grace_time_seconds }} {{ vector_identifier }} 2>/dev/null || true'
+ExecStop=-{{ devture_systemd_docker_base_host_command_sh }} -c '{{ devture_systemd_docker_base_host_command_docker }} rm {{ vector_identifier }} 2>/dev/null || true'
+
+Restart=always
+RestartSec=30
+SyslogIdentifier={{ vector_identifier }}
+
+[Install]
+WantedBy=multi-user.target

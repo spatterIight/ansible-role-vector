@@ -1,0 +1,56 @@
+{#
+SPDX-FileCopyrightText: 2025 spatterlight
+
+SPDX-License-Identifier: AGPL-3.0-or-later
+#}
+
+{% if vector_container_labels_traefik_enabled %}
+traefik.enable=true
+
+{% if vector_container_labels_traefik_docker_network %}
+traefik.docker.network={{ vector_container_labels_traefik_docker_network }}
+{% endif %}
+
+{% set middlewares = [] %}
+
+{% if vector_container_labels_traefik_path_prefix != '/' %}
+traefik.http.middlewares.{{ vector_identifier }}-slashless-redirect.redirectregex.regex=^({{ vector_container_labels_traefik_path_prefix | quote }})$
+traefik.http.middlewares.{{ vector_identifier }}-slashless-redirect.redirectregex.replacement=${1}/
+{% set middlewares = middlewares + [vector_identifier + '-slashless-redirect'] %}
+{% endif %}
+
+{% if vector_container_labels_traefik_path_prefix != '/' %}
+traefik.http.middlewares.{{ vector_identifier }}-strip-prefix.stripprefix.prefixes={{ vector_container_labels_traefik_path_prefix }}
+{% set middlewares = middlewares + [vector_identifier + '-strip-prefix'] %}
+{% endif %}
+
+traefik.http.routers.{{ vector_identifier }}.rule={{ vector_container_labels_traefik_rule }}
+{% if vector_container_labels_traefik_priority | int > 0 %}
+traefik.http.routers.{{ vector_identifier }}.priority={{ vector_container_labels_traefik_priority }}
+{% endif %}
+traefik.http.routers.{{ vector_identifier }}.service={{ vector_identifier }}
+{% if middlewares | length > 0 %}
+traefik.http.routers.{{ vector_identifier }}.middlewares={{ middlewares | join(',') }}
+{% endif %}
+traefik.http.routers.{{ vector_identifier }}.entrypoints={{ vector_container_labels_traefik_entrypoints }}
+traefik.http.routers.{{ vector_identifier }}.tls={{ vector_container_labels_traefik_tls | to_json }}
+{% if vector_container_labels_traefik_tls %}
+traefik.http.routers.{{ vector_identifier }}.tls.certResolver={{ vector_container_labels_traefik_tls_certResolver }}
+{% endif %}
+
+traefik.http.services.{{ vector_identifier }}.loadbalancer.server.port={{ vector_container_http_port }}
+{% endif %}
+
+{% if vector_container_labels_traefik_path_prefix == '/' and vector_container_labels_traefik_automatically_redirect_to_admin %}
+traefik.http.routers.{{ vector_identifier }}-rewrite.rule=Host(`{{ vector_hostname }}`) && Path(`{{ vector_path_prefix }}`)
+traefik.http.routers.{{ vector_identifier }}-rewrite.service={{ vector_identifier }}
+traefik.http.routers.{{ vector_identifier }}-rewrite.entrypoints={{ vector_container_labels_traefik_entrypoints }}
+traefik.http.routers.{{ vector_identifier }}-rewrite.tls={{ vector_container_labels_traefik_tls | to_json }}
+{% if vector_container_labels_traefik_tls %}
+traefik.http.routers.{{ vector_identifier }}-rewrite.tls.certResolver={{ vector_container_labels_traefik_tls_certResolver }}
+{% endif %}
+traefik.http.routers.{{ vector_identifier }}-rewrite.middlewares={{ vector_identifier }}-rewrite
+traefik.http.middlewares.{{ vector_identifier }}-rewrite.addprefix.prefix=/admin
+{% endif %}
+
+{{ vector_container_labels_additional_labels }}

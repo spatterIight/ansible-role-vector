@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: 2025 Slavi Pantaleev
+# SPDX-FileCopyrightText: 2025 spatterlight
+# SPDX-FileCopyrightText: 2025, 2026 Suguru Hirahara
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+---
+- name: Ensure Vector paths exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0750"
+    owner: "{{ vector_uid }}"
+    group: "{{ vector_gid }}"
+  with_items:
+    - "{{ vector_base_path }}"
+    - "{{ vector_data_path }}"
+
+- name: Ensure Vector support files installed
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/{{ item }}.j2"
+    dest: "{{ vector_base_path }}/{{ item }}"
+    mode: "0640"
+    owner: "{{ vector_uid }}"
+    group: "{{ vector_gid }}"
+  with_items:
+    - env
+    - labels
+  register: vector_support_files_result
+
+- name: Ensure Vector configuration file installed
+  ansible.builtin.copy:
+    content: "{{ vector_configuration | to_nice_yaml(indent=2, width=999999) }}"
+    dest: "{{ vector_base_path }}/config.yaml"
+    mode: "0644"
+    owner: "{{ vector_uid }}"
+    group: "{{ vector_gid }}"
+  register: vector_config_file_result
+
+- name: Ensure Vector container image is pulled via community.docker.docker_image_pull
+  when: devture_systemd_docker_base_container_image_pull_method == 'ansible-module'
+  community.docker.docker_image_pull:
+    name: "{{ vector_container_image }}"
+    pull: always
+  register: vector_container_image_pull_result_ansible_module
+  retries: "{{ devture_playbook_help_container_retries_count }}"
+  delay: "{{ devture_playbook_help_container_retries_delay }}"
+  until: vector_container_image_pull_result_ansible_module is not failed
+
+- name: Ensure Vector container image is pulled via ansible.builtin.command
+  when: devture_systemd_docker_base_container_image_pull_method == 'command'
+  ansible.builtin.command:
+    cmd: "{{ devture_systemd_docker_base_host_command_docker }} pull {{ vector_container_image }}"
+  register: vector_container_image_pull_result_command
+  retries: "{{ devture_playbook_help_container_retries_count }}"
+  delay: "{{ devture_playbook_help_container_retries_delay }}"
+  until: vector_container_image_pull_result_command is not failed
+  changed_when: "'Downloaded newer image' in vector_container_image_pull_result_command.stdout"
+
+- name: Ensure Vector container network is created via community.docker.docker_network
+  when: devture_systemd_docker_base_container_network_creation_method == 'ansible-module'
+  community.docker.docker_network:
+    enable_ipv6: "{{ devture_systemd_docker_base_ipv6_enabled }}"
+    name: "{{ vector_container_network }}"
+    driver: bridge
+    driver_options: "{{ devture_systemd_docker_base_container_networks_driver_options }}"
+  register: vector_network_creation_result
+
+- name: Ensure Vector container network is created via ansible.builtin.command
+  when: devture_systemd_docker_base_container_network_creation_method == 'command'
+  ansible.builtin.command:
+    cmd: >-
+      {{ devture_systemd_docker_base_host_command_docker }} network create
+      {% if devture_systemd_docker_base_ipv6_enabled %}--ipv6{% endif %}
+      {{ devture_systemd_docker_base_container_networks_driver_options_string }}
+      {{ vector_container_network }}
+  register: vector_network_creation_result
+  changed_when: vector_network_creation_result.rc == 0
+  failed_when: vector_network_creation_result.rc != 0 and 'already exists' not in vector_network_creation_result.stderr
+
+- name: Ensure Vector systemd service is present
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/systemd/vector.service.j2"
+    dest: "{{ devture_systemd_docker_base_systemd_path }}/{{ vector_identifier }}.service"
+    mode: "0644"
+  register: vector_systemd_service_result
+
+- name: Determine whether Vector needs a restart
+  ansible.builtin.set_fact:
+    vector_restart_necessary: >-
+      {{
+        vector_support_files_result.changed | default(false)
+        or vector_config_file_result.changed | default(false)
+        or vector_systemd_service_result.changed | default(false)
+        or vector_container_image_pull_result_ansible_module.changed | default(false)
+        or vector_container_image_pull_result_command.changed | default(false)
+      }}
