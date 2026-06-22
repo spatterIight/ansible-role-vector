@@ -1,0 +1,47 @@
+{#
+SPDX-FileCopyrightText: 2023, 2025 Slavi Pantaleev
+SPDX-FileCopyrightText: 2024 Nikita Chernyi
+SPDX-FileCopyrightText: 2024 Tiz
+SPDX-FileCopyrightText: 2025 spatterlight
+SPDX-FileCopyrightText: 2025, 2026 Suguru Hirahara
+
+SPDX-License-Identifier: AGPL-3.0-or-later
+#}
+
+{% if vector_container_labels_traefik_enabled %}
+traefik.enable=true
+
+{% if vector_container_labels_traefik_docker_network %}
+traefik.docker.network={{ vector_container_labels_traefik_docker_network }}
+{% endif %}
+
+{% set middlewares = [] %}
+
+{% if vector_container_labels_api_middleware_basic_auth_enabled %}
+traefik.http.middlewares.{{ vector_identifier }}-basic-auth.basicauth.users={{ vector_container_labels_api_middleware_basic_auth_users }}
+{% set middlewares = middlewares + [vector_identifier + '-basic-auth'] %}
+{% endif %}
+
+{% if vector_container_labels_traefik_path_prefix != '/' %}
+traefik.http.middlewares.{{ vector_identifier }}-strip-prefix.stripprefix.prefixes={{ vector_container_labels_traefik_path_prefix }}
+{% set middlewares = middlewares + [vector_identifier + '-strip-prefix'] %}
+{% endif %}
+
+traefik.http.routers.{{ vector_identifier }}.rule={{ vector_container_labels_traefik_rule }}
+{% if vector_container_labels_traefik_priority | int > 0 %}
+traefik.http.routers.{{ vector_identifier }}.priority={{ vector_container_labels_traefik_priority }}
+{% endif %}
+traefik.http.routers.{{ vector_identifier }}.service={{ vector_identifier }}
+{% if middlewares | length > 0 %}
+traefik.http.routers.{{ vector_identifier }}.middlewares={{ middlewares | join(',') }}
+{% endif %}
+traefik.http.routers.{{ vector_identifier }}.entrypoints={{ vector_container_labels_traefik_entrypoints }}
+traefik.http.routers.{{ vector_identifier }}.tls={{ vector_container_labels_traefik_tls | to_json }}
+{% if vector_container_labels_traefik_tls %}
+traefik.http.routers.{{ vector_identifier }}.tls.certResolver={{ vector_container_labels_traefik_tls_certResolver }}
+{% endif %}
+
+traefik.http.services.{{ vector_identifier }}.loadbalancer.server.port={{ vector_container_api_port }}
+{% endif %}
+
+{{ vector_container_labels_additional_labels }}

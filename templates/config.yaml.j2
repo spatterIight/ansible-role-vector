@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2025 spatterlight
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# Vector configuration.
+# Reference: https://vector.dev/docs/reference/configuration/
+
+# Directory where Vector persists state and buffers data.
+data_dir: {{ vector_data_dir | to_json }}
+
+{% if vector_api_enabled %}
+# Vector's GraphQL API (powers `vector top`/`vector tap`, exposes `/health`, and
+# serves an interactive `/playground` while the API is enabled).
+# The API has no authentication; secure it via a reverse proxy when exposing it.
+api:
+  enabled: true
+  address: 0.0.0.0:{{ vector_container_api_port }}
+{% endif %}
+
+# Where data comes in.
+sources:
+{{ vector_sources | to_nice_yaml(indent=2) | trim | indent(2, first=true) }}
+
+{% if vector_transforms %}
+# How data is reshaped between sources and sinks.
+transforms:
+{{ vector_transforms | to_nice_yaml(indent=2) | trim | indent(2, first=true) }}
+{% endif %}
+
+# Where data goes out.
+sinks:
+{{ vector_sinks | to_nice_yaml(indent=2) | trim | indent(2, first=true) }}
