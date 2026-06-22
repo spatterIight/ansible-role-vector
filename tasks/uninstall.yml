@@ -40,13 +40,6 @@
       changed_when: vector_data_path_deletion_result.rc == 0
       failed_when: false
 
-    - name: Ensure Vector local media path does not exist if empty
-      ansible.builtin.command:
-        cmd: "rmdir {{ vector_media_path }}"
-      register: vector_media_path_deletion_result
-      changed_when: vector_media_path_deletion_result.rc == 0
-      failed_when: false
-
     - name: Ensure Vector base path does not exist if empty
       ansible.builtin.command:
         cmd: "rmdir {{ vector_base_path }}"

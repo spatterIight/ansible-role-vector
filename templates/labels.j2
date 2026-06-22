@@ -1,5 +1,9 @@
 {#
+SPDX-FileCopyrightText: 2023, 2025 Slavi Pantaleev
+SPDX-FileCopyrightText: 2024 Nikita Chernyi
+SPDX-FileCopyrightText: 2024 Tiz
 SPDX-FileCopyrightText: 2025 spatterlight
+SPDX-FileCopyrightText: 2025, 2026 Suguru Hirahara
 
 SPDX-License-Identifier: AGPL-3.0-or-later
 #}
@@ -13,10 +17,9 @@ traefik.docker.network={{ vector_container_labels_traefik_docker_network }}
 
 {% set middlewares = [] %}
 
-{% if vector_container_labels_traefik_path_prefix != '/' %}
-traefik.http.middlewares.{{ vector_identifier }}-slashless-redirect.redirectregex.regex=^({{ vector_container_labels_traefik_path_prefix | quote }})$
-traefik.http.middlewares.{{ vector_identifier }}-slashless-redirect.redirectregex.replacement=${1}/
-{% set middlewares = middlewares + [vector_identifier + '-slashless-redirect'] %}
+{% if vector_container_labels_api_middleware_basic_auth_enabled %}
+traefik.http.middlewares.{{ vector_identifier }}-basic-auth.basicauth.users={{ vector_container_labels_api_middleware_basic_auth_users }}
+{% set middlewares = middlewares + [vector_identifier + '-basic-auth'] %}
 {% endif %}
 
 {% if vector_container_labels_traefik_path_prefix != '/' %}
@@ -38,19 +41,7 @@ traefik.http.routers.{{ vector_identifier }}.tls={{ vector_container_labels_trae
 traefik.http.routers.{{ vector_identifier }}.tls.certResolver={{ vector_container_labels_traefik_tls_certResolver }}
 {% endif %}
 
-traefik.http.services.{{ vector_identifier }}.loadbalancer.server.port={{ vector_container_http_port }}
-{% endif %}
-
-{% if vector_container_labels_traefik_path_prefix == '/' and vector_container_labels_traefik_automatically_redirect_to_admin %}
-traefik.http.routers.{{ vector_identifier }}-rewrite.rule=Host(`{{ vector_hostname }}`) && Path(`{{ vector_path_prefix }}`)
-traefik.http.routers.{{ vector_identifier }}-rewrite.service={{ vector_identifier }}
-traefik.http.routers.{{ vector_identifier }}-rewrite.entrypoints={{ vector_container_labels_traefik_entrypoints }}
-traefik.http.routers.{{ vector_identifier }}-rewrite.tls={{ vector_container_labels_traefik_tls | to_json }}
-{% if vector_container_labels_traefik_tls %}
-traefik.http.routers.{{ vector_identifier }}-rewrite.tls.certResolver={{ vector_container_labels_traefik_tls_certResolver }}
-{% endif %}
-traefik.http.routers.{{ vector_identifier }}-rewrite.middlewares={{ vector_identifier }}-rewrite
-traefik.http.middlewares.{{ vector_identifier }}-rewrite.addprefix.prefix=/admin
+traefik.http.services.{{ vector_identifier }}.loadbalancer.server.port={{ vector_container_api_port }}
 {% endif %}
 
 {{ vector_container_labels_additional_labels }}

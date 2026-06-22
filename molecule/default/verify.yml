@@ -22,20 +22,19 @@
         fail_msg: "vector.service not active ({{ vector_service.status.ActiveState }})"
         success_msg: "vector.service is active"
 
-    - name: Wait for Vector HTTP endpoint to respond (up to 10m)
+    - name: Wait for Vector API /health endpoint to respond (up to 10m)
       ansible.builtin.uri:
-        url: "http://localhost:3000/admin"
+        url: "http://localhost:8686/health"
         method: GET
-        status_code: [200, 302]
-        follow_redirects: none
+        status_code: [200]
       register: vector_endpoint
-      until: vector_endpoint.status in [200, 302]
+      until: vector_endpoint.status == 200
       retries: 120
       delay: 5
 
-    - name: Assert Vector HTTP endpoint responds
+    - name: Assert Vector API /health endpoint responds
       ansible.builtin.assert:
-        that: vector_endpoint.status in [200, 302]
+        that: vector_endpoint.status == 200
         fail_msg: "Vector did not respond as expected ({{ vector_endpoint.status | default('no response') }})"
         success_msg: "Vector responded with {{ vector_endpoint.status }}"
 

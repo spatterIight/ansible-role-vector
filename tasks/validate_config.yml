@@ -12,6 +12,10 @@
   when: "lookup('ansible.builtin.varnames', ('^' + item.old + '$'), wantlist=True) | length > 0"
   with_items:
     - { "old": "vector_container_image_force_pull", "new": "<removed> (the new community.docker.docker_image_pull module handles this natively)" }
+    - { "old": "vector_container_http_port", "new": "vector_container_api_port" }
+    - { "old": "vector_cookie_secret", "new": "<removed> (Vector has no web sessions)" }
+    - { "old": "vector_headscale_hostname", "new": "<removed> (this is no longer a Headscale-related role)" }
+    - { "old": "vector_headscale_port", "new": "<removed> (this is no longer a Headscale-related role)" }
 
 - name: Fail if required Vector settings not defined
   ansible.builtin.fail:
@@ -21,10 +25,6 @@
   with_items:
     - vector_uid
     - vector_gid
-    - vector_hostname
-    - vector_cookie_secret
-    - vector_headscale_hostname
-    - vector_headscale_port
 
 - name: Fail if Vector architecture is not supported
   ansible.builtin.fail:
@@ -42,8 +42,16 @@
           You need to define a required configuration setting (`{{ item }}`).
       when: "lookup('vars', item, default='') | string | length == 0"
       with_items:
+        - vector_hostname
         - vector_container_labels_traefik_hostname
         - vector_container_labels_traefik_path_prefix
+
+    - name: Fail if Vector Traefik basic auth is enabled without defined users
+      ansible.builtin.fail:
+        msg: >-
+          You have enabled `vector_container_labels_api_middleware_basic_auth_enabled`,
+          so you need to define `vector_container_labels_api_middleware_basic_auth_users`.
+      when: "vector_container_labels_api_middleware_basic_auth_enabled | bool and vector_container_labels_api_middleware_basic_auth_users | length == 0"
 
     # We ensure it doesn't end with a slash, because we handle both (slash and no-slash).
     # Knowing that `vector_container_labels_traefik_path_prefix` does not end with a slash

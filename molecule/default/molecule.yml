@@ -19,7 +19,7 @@ platforms:
     privileged: true
     pre_build_image: true
     published_ports:
-      - 127.0.0.1:9000:9000
+      - 127.0.0.1:8686:8686
 provisioner:
   name: ansible
   config_options:
@@ -30,10 +30,9 @@ provisioner:
       all:
         vector_uid: 1000
         vector_gid: 1000
-        vector_hostname: vector
-        vector_cookie_secret: "molecule-test-secret-12345678901"
         vector_container_labels_traefik_enabled: false
-        vector_container_http_bind_port: 3000
+        vector_api_enabled: true
+        vector_container_http_bind_port: 8686
   env:
     # Workaround for https://github.com/ansible/molecule/issues/4391
     ANSIBLE_ROLES_PATH: ${MOLECULE_PROJECT_DIRECTORY}/..:/.ansible/roles:/usr/share/ansible/roles:/etc/ansible/roles:~/.ansible/roles

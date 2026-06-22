@@ -31,7 +31,7 @@
 - name: Ensure Vector configuration file installed
   ansible.builtin.copy:
     content: "{{ vector_configuration | to_nice_yaml(indent=2, width=999999) }}"
-    dest: "{{ vector_base_path }}/config.yaml"
+    dest: "{{ vector_base_path }}/vector.yaml"
     mode: "0644"
     owner: "{{ vector_uid }}"
     group: "{{ vector_gid }}"

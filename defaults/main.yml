@@ -10,7 +10,7 @@
 
 ---
 
-# Project source code URL: https://github.com/tale/vector
+# Project source code URL: https://github.com/vectordotdev/vector
 
 vector_enabled: true
 
@@ -21,72 +21,45 @@ vector_data_path: "{{ vector_base_path }}/data"
 vector_uid: ""
 vector_gid: ""
 
-# renovate: datasource=docker depName=ghcr.io/tale/vector versioning=semver
-vector_version: 0.6.3
+# renovate: datasource=docker depName=timberio/vector versioning=semver
+vector_version: 0.56.0
 vector_arch: amd64
 
-# The hostname at which vector is served.
+# The Vector image distribution variant to use.
+# One of: debian, alpine, distroless-libc, distroless-static
+vector_container_image_distribution: debian
+
+# The hostname at which Vector's API is served (only relevant when exposing
+# the API via a reverse proxy such as Traefik).
 vector_hostname: ""
 
-# The path at which vector is served.
+# The path at which Vector is served behind a reverse proxy.
 # This value must either be `/` or not end with a slash (e.g. `/vector`).
 vector_path_prefix: /
 
-# The secret used to encode and decode web sessions
-# Ensure that this is exactly 32 characters long
-#
-# Generate with `pwgen -s 32 1` or in another way
-vector_cookie_secret: ""
-
-# The public URL at which headscale is served
-vector_headscale_public_url: ""
-
-# Controls the `HEADPLANE_DEBUG_LOG=true` environment variable being set
+# Controls Vector's log verbosity by setting the `VECTOR_LOG` environment variable.
+# When enabled, the log level is raised to `debug`.
 vector_debugging_enabled: false
 
-# The name of the headscale docker container,
-# useful if enabling docker integration
-vector_headscale_container_name: headscale
-
-# Controls the headscale.dns_records_path configuration
-vector_headscale_extra_records_enabled: false
-
-# The hostname at which headscale is served
-vector_headscale_hostname: headscale
-vector_headscale_port: 8080
-
-# The path at which the headscale configuration file is stored outside of the container
-# Set to an empty string to not mount
-vector_headscale_config_path: ""
-
-# Control options for the mounting of `vector_headscale_config_path`
-# Defaults to 'readonly', which is more secure but disables changes to DNS
+# Controls Vector's GraphQL API.
 #
-# Set `vector_headscale_config_path_mount_options` to 'readwrite' to mount as read-write
-vector_headscale_config_path_mount_options: readonly
+# The API is disabled by default (matching Vector's upstream default).
+# When enabled, Vector exposes an HTTP `/health` endpoint, a GraphQL endpoint,
+# and an interactive `/playground`. It powers `vector top`/`vector tap`.
+#
+# The API has no authentication of its own. When exposing it, secure it via a
+# reverse proxy (see `vector_container_labels_api_middleware_basic_auth_*`).
+vector_api_enabled: false
 
-# Controls the `integration.agent.enabled` configuration value
-vector_config_integration_agent_enabled: false
+# The address (host:port) Vector's API binds to inside the container.
+# Use `0.0.0.0` so the API is reachable from outside the container.
+vector_api_address: "0.0.0.0:{{ vector_container_api_port }}"
 
-# Controls the `integration.agent.pre_authkey` configuration value
-vector_config_integration_agent_pre_authkey: ""
-
-# Controls the `integration.docker.enabled` configuration value
-# and the mounting of `vector_config_integration_docker_endpoint` into the container
-vector_config_integration_docker_enabled: false
-
-# Controls the `integration.docker.socket` configuration value
-# and the mounting of `vector_config_integration_docker_endpoint` into the container
-vector_config_integration_docker_endpoint: ""
-
-# Controls the mounting of `vector_config_integration_docker_endpoint` into the container
-vector_docker_endpoint_is_unix_socket: false
-
-vector_container_image: "{{ vector_container_image_registry_prefix }}tale/vector:{{ vector_container_image_tag }}"
-vector_container_image_tag: "{{ vector_version }}"
+vector_container_image: "{{ vector_container_image_registry_prefix }}timberio/vector:{{ vector_container_image_tag }}"
+vector_container_image_tag: "{{ vector_version }}-{{ vector_container_image_distribution }}"
 vector_container_image_registry_prefix: "{{ vector_container_image_registry_prefix_upstream }}"
 vector_container_image_registry_prefix_upstream: "{{ vector_container_image_registry_prefix_upstream_default }}"
-vector_container_image_registry_prefix_upstream_default: ghcr.io/
+vector_container_image_registry_prefix_upstream_default: docker.io/
 
 # The base container network. It will be auto-created by this role if it doesn't exist already.
 vector_container_network: "{{ vector_identifier }}"
@@ -113,17 +86,20 @@ vector_systemd_wanted_services_list_default: []
 vector_systemd_wanted_services_list_auto: []
 vector_systemd_wanted_services_list_custom: []
 
-# The port Vector is running the WebUI on inside the container
-vector_container_http_port: 3000
+# The port Vector's API listens on inside the container.
+vector_container_api_port: 8686
 
-# Controls whether the container exposes the HTTP WebUI port
-# Can be used to access the HTTP WebUI directly (bypassing Traefik)
+# Controls whether the container exposes the API port on the host.
+# Can be used to access the API/playground directly (bypassing Traefik).
 #
-# Takes an "<ip>:<port>" or "<port>" value (e.g. "127.0.0.1:8080"), or empty string to not expose.
+# Takes an "<ip>:<port>" or "<port>" value (e.g. "127.0.0.1:8686"), or empty string to not expose.
 vector_container_http_bind_port: ""
 
+# vector_container_labels_traefik_enabled controls whether labels to assist a Traefik reverse-proxy will be attached to the container.
+# See `../templates/labels.j2` for details.
+#
 # To inject your own other container labels, see `vector_container_labels_additional_labels`.
-vector_container_labels_traefik_enabled: true
+vector_container_labels_traefik_enabled: false
 vector_container_labels_traefik_docker_network: "{{ vector_container_network }}"
 vector_container_labels_traefik_hostname: "{{ vector_hostname }}"
 # The path prefix must either be `/` or not end with a slash (e.g. `/vector`).
@@ -134,9 +110,14 @@ vector_container_labels_traefik_entrypoints: web-secure
 vector_container_labels_traefik_tls: "{{ vector_container_labels_traefik_entrypoints != 'web' }}"
 vector_container_labels_traefik_tls_certResolver: default  # noqa var-naming
 
-# Controls the addition of a set of Traefik labels
-# which automatically redirect to /admin when `vector_path_prefix` is '/'
-vector_container_labels_traefik_automatically_redirect_to_admin: true
+# Controls whether a Traefik basic-auth middleware is attached to the API router.
+# As Vector's API has no authentication of its own, enabling basic auth is strongly
+# recommended whenever the API is exposed publicly.
+#
+# See: https://doc.traefik.io/traefik/reference/routing-configuration/http/middlewares/basicauth/
+vector_container_labels_api_middleware_basic_auth_enabled: false
+# A comma-separated list of `user:hashed-password` entries (htpasswd format).
+vector_container_labels_api_middleware_basic_auth_users: ""
 
 # vector_container_labels_additional_labels contains a multiline string with additional labels to add to the container label file.
 # See `../templates/labels.j2` for details.
@@ -173,6 +154,41 @@ vector_container_additional_volumes: []
 # A list of extra arguments to pass to the container
 vector_container_extra_arguments: []
 
+# The directory (inside the container) where Vector persists state and buffers data.
+vector_data_dir: /var/lib/vector
+
+# The Vector pipeline is described by 3 maps: sources, transforms and sinks.
+# Each is assembled from an `_auto` map (sane role defaults) and a `_custom` map
+# (your additions/overrides), merged with `combine`.
+#
+# The default pipeline collects host metrics and Vector's own internal logs and
+# writes them as JSON to the console (captured by journald: `journalctl -u vector`).
+# Replace the `_custom` maps (or override `_auto`) to build your own pipeline.
+#
+# See: https://vector.dev/docs/reference/configuration/
+vector_sources: "{{ vector_sources_auto | combine(vector_sources_custom) }}"
+vector_sources_auto:
+  host_metrics:
+    type: host_metrics
+  internal_logs:
+    type: internal_logs
+vector_sources_custom: {}
+
+vector_transforms: "{{ vector_transforms_auto | combine(vector_transforms_custom) }}"
+vector_transforms_auto: {}
+vector_transforms_custom: {}
+
+vector_sinks: "{{ vector_sinks_auto | combine(vector_sinks_custom) }}"
+vector_sinks_auto:
+  console:
+    type: console
+    inputs:
+      - host_metrics
+      - internal_logs
+    encoding:
+      codec: json
+vector_sinks_custom: {}
+
 # Default Vector configuration template which covers the generic use case.
 # You can customize it by controlling the various variables inside it.
 #
@@ -191,8 +207,11 @@ vector_configuration_extension_yaml: |
   #
   # Example configuration extension follows:
   #
-  # acme_url: https://acme-v02.api.letsencrypt.org/directory
-  # acme_email: "alice@example.com"
+  # sinks:
+  #   my_loki:
+  #     type: loki
+  #     inputs: [internal_logs]
+  #     endpoint: https://loki.example.com
 
 vector_configuration_extension: "{{ vector_configuration_extension_yaml | from_yaml if vector_configuration_extension_yaml | from_yaml is mapping else {} }}"
 
