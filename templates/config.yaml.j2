@@ -14,7 +14,7 @@ data_dir: {{ vector_data_dir | to_json }}
 # The API has no authentication; secure it via a reverse proxy when exposing it.
 api:
   enabled: true
-  address: {{ vector_api_address | to_json }}
+  address: 0.0.0.0:{{ vector_container_api_port }}
 {% endif %}
 
 # Where data comes in.

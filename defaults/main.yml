@@ -51,10 +51,6 @@ vector_debugging_enabled: false
 # reverse proxy (see `vector_container_labels_api_middleware_basic_auth_*`).
 vector_api_enabled: false
 
-# The address (host:port) Vector's API binds to inside the container.
-# Use `0.0.0.0` so the API is reachable from outside the container.
-vector_api_address: "0.0.0.0:{{ vector_container_api_port }}"
-
 vector_container_image: "{{ vector_container_image_registry_prefix }}timberio/vector:{{ vector_container_image_tag }}"
 vector_container_image_tag: "{{ vector_version }}-{{ vector_container_image_distribution }}"
 vector_container_image_registry_prefix: "{{ vector_container_image_registry_prefix_upstream }}"
