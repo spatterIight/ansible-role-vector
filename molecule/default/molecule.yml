@@ -32,7 +32,7 @@ provisioner:
         vector_gid: 1000
         vector_container_labels_traefik_enabled: false
         vector_api_enabled: true
-        vector_container_http_bind_port: 8686
+        vector_container_api_bind_port: 8686
   env:
     # Workaround for https://github.com/ansible/molecule/issues/4391
     ANSIBLE_ROLES_PATH: ${MOLECULE_PROJECT_DIRECTORY}/..:/.ansible/roles:/usr/share/ansible/roles:/etc/ansible/roles:~/.ansible/roles

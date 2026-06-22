@@ -89,7 +89,7 @@ vector_container_api_port: 8686
 # Can be used to access the API/playground directly (bypassing Traefik).
 #
 # Takes an "<ip>:<port>" or "<port>" value (e.g. "127.0.0.1:8686"), or empty string to not expose.
-vector_container_http_bind_port: ""
+vector_container_api_bind_port: ""
 
 # vector_container_labels_traefik_enabled controls whether labels to assist a Traefik reverse-proxy will be attached to the container.
 # See `../templates/labels.j2` for details.

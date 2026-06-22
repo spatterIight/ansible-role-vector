@@ -29,8 +29,8 @@ ExecStartPre={{ devture_systemd_docker_base_host_command_docker }} create \
       --cap-drop=ALL \
       --read-only \
       --network={{ vector_container_network }} \
-      {% if vector_container_http_bind_port %}
-      -p {{ vector_container_http_bind_port }}:{{ vector_container_api_port }} \
+      {% if vector_container_api_bind_port %}
+      -p {{ vector_container_api_bind_port }}:{{ vector_container_api_port }} \
       {% endif %}
       --env-file={{ vector_base_path }}/env \
       --label-file={{ vector_base_path }}/labels \
