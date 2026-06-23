@@ -227,9 +227,10 @@ vector_journald_source_in_container_path: /journal
 vector_journald_source_additional_volumes:
   - {type: bind, src: "{{ vector_journald_source_host_path }}", dst: "{{ vector_journald_source_in_container_path }}", options: readonly}
   - {type: bind, src: /etc/machine-id, dst: /etc/machine-id, options: readonly}
-# `current_boot_only: false` ships historical entries too (similar in spirit to
-# promtail's `max_age: 12h`).
-vector_journald_source_current_boot_only: false
+# Ship only entries from the current boot (plus all new ones as they arrive).
+#
+# Note: Vector rejects `current_boot_only: false` on systemd versions 250-257
+vector_journald_source_current_boot_only: true
 # Exclude Vector's own systemd unit to avoid a log feedback loop.
 vector_journald_source_exclude_units:
   - "{{ vector_identifier }}"
