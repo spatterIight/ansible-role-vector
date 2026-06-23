@@ -183,7 +183,11 @@ vector_sources_auto_base:
 vector_sources_custom: {}
 
 vector_transforms: "{{ vector_transforms_auto | combine(vector_transforms_custom) }}"
-vector_transforms_auto: {}
+# `vector_transforms_auto` starts from a base set of transforms and conditionally merges
+# in the built-in journald labeling transform (see the host-log sources section) when
+# the journald source is enabled.
+vector_transforms_auto: "{{ vector_transforms_auto_base | combine(vector_journald_labels_transform_config if vector_journald_source_enabled else {}) }}"
+vector_transforms_auto_base: {}
 vector_transforms_custom: {}
 
 vector_sinks: "{{ vector_sinks_auto | combine(vector_sinks_custom) }}"
@@ -207,8 +211,7 @@ vector_sinks_custom: {}
 # (`--user=… --cap-drop=ALL`). Reading the host's root-owned systemd journal and
 # `/var/log` files requires running as root and bypassing DAC permission checks, so
 # enabling either built-in host-log source below automatically relaxes the container
-# posture (runs as root and adds `DAC_OVERRIDE`/`DAC_READ_SEARCH`). This mirrors how
-# ansible-role-promtail operates its journald/varlog scrapers.
+# posture (runs as root and adds `DAC_OVERRIDE`/`DAC_READ_SEARCH`).
 #
 # When no host-log source is enabled, the hardened non-root posture is kept.
 vector_container_run_as_non_root_user_enabled: "{{ not (vector_journald_source_enabled or vector_varlog_source_enabled) }}"
@@ -220,7 +223,11 @@ vector_container_capabilities_to_add: "{{ ['DAC_OVERRIDE', 'DAC_READ_SEARCH'] if
 # present in the `debian` image variant (`vector_container_image_distribution`), not in
 # the alpine/distroless variants. `validate_config.yml` enforces this.
 #
-# When enabled, a source named `journald` is added; reference it in your sink `inputs`.
+# When enabled, this wires up two components:
+#   - a `journald` source (internally named `journald_source`) that reads the journal, and
+#   - a `journald` remap transform that promotes useful journal fields (unit,
+#     syslog_identifier, service_name) onto each event so they can be used as Loki labels.
+# Reference `journald` in your sink `inputs` to consume the labeled stream.
 vector_journald_source_enabled: false
 vector_journald_source_host_path: /var/log/journal
 vector_journald_source_in_container_path: /journal
@@ -235,11 +242,30 @@ vector_journald_source_current_boot_only: true
 vector_journald_source_exclude_units:
   - "{{ vector_identifier }}"
 vector_journald_source_config:
-  journald:
+  journald_source:
     type: journald
     journal_directory: "{{ vector_journald_source_in_container_path }}"
     current_boot_only: "{{ vector_journald_source_current_boot_only }}"
     exclude_units: "{{ vector_journald_source_exclude_units }}"
+
+# Built-in labeling transform applied to the journald stream. It promotes journal fields
+# to clean, low-cardinality top-level fields (unit, syslog_identifier, service_name) so
+# they can be mapped to Loki labels in your sink, which stops Loki from labeling
+# everything `unknown_service`. The transform's component id is `journald` — the name you
+# reference in your sink `inputs`.
+#
+# `service_name` is the field Grafana's service picker and Loki's service detection use;
+# it falls back from the systemd unit to the syslog identifier (e.g. for kernel messages).
+# The VRL below uses only infallible operations so it can never fail the pipeline.
+vector_journald_labels_transform_config:
+  journald:
+    type: remap
+    inputs:
+      - journald_source
+    source: |
+      .unit = ._SYSTEMD_UNIT
+      .syslog_identifier = .SYSLOG_IDENTIFIER
+      .service_name = ._SYSTEMD_UNIT || .SYSLOG_IDENTIFIER || "journald"
 
 # varlog source: ships textual log files found under `/var/log` to the pipeline.
 #
