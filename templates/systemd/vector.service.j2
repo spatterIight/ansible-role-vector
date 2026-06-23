@@ -25,8 +25,13 @@ ExecStartPre={{ devture_systemd_docker_base_host_command_sh }} -c '{{ vector_con
 ExecStartPre={{ devture_systemd_docker_base_host_command_docker }} create \
       --rm \
       --name={{ vector_identifier }} \
+      {% if vector_container_run_as_non_root_user_enabled %}
       --user={{ vector_uid }}:{{ vector_gid }} \
+      {% endif %}
       --cap-drop=ALL \
+      {% for capability in vector_container_capabilities_to_add %}
+      --cap-add={{ capability }} \
+      {% endfor %}
       --read-only \
       --network={{ vector_container_network }} \
       {% if vector_container_api_bind_port %}

@@ -136,8 +136,14 @@ vector_environment_variables_additional_variables: ""
 #
 # See the `--mount` documentation for the `docker run` command.
 #
+# This list is assembled from 3 parts:
+# - `_default` is populated automatically based on the enabled built-in log sources
+#   (journald/varlog), so you usually don't need to touch it.
+# - `_auto` is reserved for other roles to inject mounts programmatically.
+# - `_custom` is where you add your own mounts.
+#
 # Example:
-# vector_container_additional_volumes:
+# vector_container_additional_volumes_custom:
 #   - type: bind
 #     src: /path/on/the/host
 #     dst: /data
@@ -145,7 +151,10 @@ vector_environment_variables_additional_variables: ""
 #     src: /another-path/on/the/host
 #     dst: /read-only
 #     options: readonly
-vector_container_additional_volumes: []
+vector_container_additional_volumes: "{{ vector_container_additional_volumes_default + vector_container_additional_volumes_auto + vector_container_additional_volumes_custom }}"
+vector_container_additional_volumes_default: "{{ (vector_journald_source_additional_volumes if vector_journald_source_enabled else []) + (vector_varlog_source_additional_volumes if vector_varlog_source_enabled else []) }}"
+vector_container_additional_volumes_auto: []
+vector_container_additional_volumes_custom: []
 
 # A list of extra arguments to pass to the container
 vector_container_extra_arguments: []
@@ -163,7 +172,10 @@ vector_data_dir: /var/lib/vector
 #
 # See: https://vector.dev/docs/reference/configuration/
 vector_sources: "{{ vector_sources_auto | combine(vector_sources_custom) }}"
-vector_sources_auto:
+# `vector_sources_auto` starts from a base set of sources and conditionally merges in
+# the built-in journald/varlog sources when their toggles are enabled (see below).
+vector_sources_auto: "{{ vector_sources_auto_base | combine(vector_journald_source_config if vector_journald_source_enabled else {}) | combine(vector_varlog_source_config if vector_varlog_source_enabled else {}) }}"
+vector_sources_auto_base:
   host_metrics:
     type: host_metrics
   internal_logs:
@@ -184,6 +196,64 @@ vector_sinks_auto:
     encoding:
       codec: json
 vector_sinks_custom: {}
+
+########################################################################
+#                                                                      #
+# Built-in host-log sources (journald / varlog)                        #
+#                                                                      #
+########################################################################
+
+# Vector normally runs as a non-root user with all Linux capabilities dropped
+# (`--user=… --cap-drop=ALL`). Reading the host's root-owned systemd journal and
+# `/var/log` files requires running as root and bypassing DAC permission checks, so
+# enabling either built-in host-log source below automatically relaxes the container
+# posture (runs as root and adds `DAC_OVERRIDE`/`DAC_READ_SEARCH`). This mirrors how
+# ansible-role-promtail operates its journald/varlog scrapers.
+#
+# When no host-log source is enabled, the hardened non-root posture is kept.
+vector_container_run_as_non_root_user_enabled: "{{ not (vector_journald_source_enabled or vector_varlog_source_enabled) }}"
+vector_container_capabilities_to_add: "{{ ['DAC_OVERRIDE', 'DAC_READ_SEARCH'] if (vector_journald_source_enabled or vector_varlog_source_enabled) else [] }}"
+
+# journald source: ships the host's systemd journal to the Vector pipeline.
+#
+# Vector's `journald` source shells out to the `journalctl` binary, which is only
+# present in the `debian` image variant (`vector_container_image_distribution`), not in
+# the alpine/distroless variants. `validate_config.yml` enforces this.
+#
+# When enabled, a source named `journald` is added; reference it in your sink `inputs`.
+vector_journald_source_enabled: false
+vector_journald_source_host_path: /var/log/journal
+vector_journald_source_in_container_path: /journal
+vector_journald_source_additional_volumes:
+  - {type: bind, src: "{{ vector_journald_source_host_path }}", dst: "{{ vector_journald_source_in_container_path }}", options: readonly}
+  - {type: bind, src: /etc/machine-id, dst: /etc/machine-id, options: readonly}
+# `current_boot_only: false` ships historical entries too (similar in spirit to
+# promtail's `max_age: 12h`).
+vector_journald_source_current_boot_only: false
+# Exclude Vector's own systemd unit to avoid a log feedback loop.
+vector_journald_source_exclude_units:
+  - "{{ vector_identifier }}"
+vector_journald_source_config:
+  journald:
+    type: journald
+    journal_directory: "{{ vector_journald_source_in_container_path }}"
+    current_boot_only: "{{ vector_journald_source_current_boot_only }}"
+    exclude_units: "{{ vector_journald_source_exclude_units }}"
+
+# varlog source: ships textual log files found under `/var/log` to the pipeline.
+#
+# When enabled, a source named `varlog` is added; reference it in your sink `inputs`.
+vector_varlog_source_enabled: false
+vector_varlog_source_host_path: /var/log
+vector_varlog_source_in_container_path: /varlog
+vector_varlog_source_additional_volumes:
+  - {type: bind, src: "{{ vector_varlog_source_host_path }}", dst: "{{ vector_varlog_source_in_container_path }}", options: readonly}
+vector_varlog_source_include:
+  - "{{ vector_varlog_source_in_container_path }}/**/*.log"
+vector_varlog_source_config:
+  varlog:
+    type: file
+    include: "{{ vector_varlog_source_include }}"
 
 # Default Vector configuration template which covers the generic use case.
 # You can customize it by controlling the various variables inside it.

@@ -33,6 +33,16 @@
       This Vector role also does not support self-building yet, so it's not possible to make use of it.
   when: "vector_arch not in ['amd64', 'arm64']"
 
+- name: Fail if Vector journald source is enabled on an image without journalctl
+  ansible.builtin.fail:
+    msg: >-
+      You have enabled `vector_journald_source_enabled`, but
+      `vector_container_image_distribution` is set to `{{ vector_container_image_distribution }}`.
+      Vector's `journald` source shells out to the `journalctl` binary, which is only
+      bundled in the `debian` image variant. Set `vector_container_image_distribution: debian`
+      (or mount a `journalctl` binary yourself and override the source's `journalctl_path`).
+  when: "vector_journald_source_enabled | bool and vector_container_image_distribution != 'debian'"
+
 - name: Validate Vector Traefik configuration
   when: vector_container_labels_traefik_enabled | bool
   block:
