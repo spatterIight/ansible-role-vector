@@ -180,6 +180,8 @@ vector_sources_auto_base:
     type: host_metrics
   internal_logs:
     type: internal_logs
+  internal_metrics:
+    type: internal_metrics
 vector_sources_custom: {}
 
 vector_transforms: "{{ vector_transforms_auto | combine(vector_transforms_custom) }}"
@@ -195,7 +197,6 @@ vector_sinks_auto:
   console:
     type: console
     inputs:
-      - host_metrics
       - internal_logs
     encoding:
       codec: json
