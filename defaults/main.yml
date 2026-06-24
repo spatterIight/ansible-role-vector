@@ -278,10 +278,14 @@ vector_varlog_source_additional_volumes:
   - {type: bind, src: "{{ vector_varlog_source_host_path }}", dst: "{{ vector_varlog_source_in_container_path }}", options: readonly}
 vector_varlog_source_include:
   - "{{ vector_varlog_source_in_container_path }}/**/*.log"
+# Identify files by inode. Set to `checksum` for Vector's default.
+vector_varlog_source_fingerprint:
+  strategy: device_and_inode
 vector_varlog_source_config:
   varlog:
     type: file
     include: "{{ vector_varlog_source_include }}"
+    fingerprint: "{{ vector_varlog_source_fingerprint }}"
 
 # Default Vector configuration template which covers the generic use case.
 # You can customize it by controlling the various variables inside it.
