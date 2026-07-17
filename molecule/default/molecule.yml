@@ -28,6 +28,10 @@ provisioner:
   inventory:
     group_vars:
       all:
+        # Helper variables
+        vector_debug_service_enabled: false
+
+        # Variables for Vector
         vector_uid: 1000
         vector_gid: 1000
         vector_container_labels_traefik_enabled: false
