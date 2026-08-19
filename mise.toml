@@ -4,6 +4,3 @@
 
 [tools]
 prek = "0.3.11"
-
-[settings]
-yes = true
