@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Slavi Pantaleev
 # SPDX-FileCopyrightText: 2026 spatterlight
 #
 # SPDX-License-Identifier: AGPL-3.0-or-later
@@ -17,6 +18,10 @@
     - name: Ensure required packages are installed for Vector Molecule tests preparation
       ansible.builtin.package:
         name:
+          # `fuse-overlayfs` is the storage driver the inner Docker daemon uses below.
+          # `vfs` also works, but copies the whole image on every layer, which makes
+          # the job several times slower.
+          - fuse-overlayfs
           - python3-requests
         state: present
 
@@ -25,4 +30,26 @@
         name: ansible-role-docker
       vars:
         docker_daemon_options:
-          storage-driver: vfs
+          storage-driver: fuse-overlayfs
+
+    # This directory is bind-mounted into the Vector container (read-only) via
+    # `vector_container_additional_volumes_custom` and read by the `molecule_input`
+    # file source. The seed file is in place before Vector ever starts.
+    - name: Ensure Vector Molecule input directory exists
+      ansible.builtin.file:
+        path: "{{ vector_molecule_input_host_path }}"
+        state: directory
+        mode: "0755"
+
+    - name: Ensure Vector Molecule seed log file exists
+      ansible.builtin.copy:
+        content: "{{ vector_molecule_seed_marker }} seeded before Vector started\n"
+        dest: "{{ vector_molecule_input_host_path }}/seed.log"
+        mode: "0644"
+
+    # Left over from a previous run of the scenario on the same machine, it would
+    # make the "live" assertion pass without the pipeline having done anything.
+    - name: Ensure Vector Molecule live log file is absent
+      ansible.builtin.file:
+        path: "{{ vector_molecule_input_host_path }}/live.log"
+        state: absent

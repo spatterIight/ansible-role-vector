@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Slavi Pantaleev
 # SPDX-FileCopyrightText: 2026 spatterlight
 #
 # SPDX-License-Identifier: AGPL-3.0-or-later
@@ -19,8 +20,6 @@ platforms:
     cgroupns_mode: host
     privileged: true
     pre_build_image: true
-    published_ports:
-      - 127.0.0.1:8686:8686
 provisioner:
   name: ansible
   config_options:
@@ -32,12 +31,74 @@ provisioner:
         # Helper variables
         vector_debug_service_enabled: false
 
+        # Where prepare.yml drops the log files that the pipeline below ingests,
+        # and the markers verify.yml looks for on the way out. The seed file exists
+        # before Vector starts; the live one is created afterwards, so that the suite
+        # proves the pipeline is actually running rather than that a file was copied
+        # around once.
+        vector_molecule_input_host_path: /opt/vector-molecule/input
+        vector_molecule_input_container_path: /molecule-input
+        vector_molecule_output_path_in_container: "{{ vector_data_dir }}/molecule-output.log"
+        vector_molecule_output_path_on_host: "{{ vector_data_path }}/molecule-output.log"
+        # Same values the role defaults carry, restated here because prepare.yml and
+        # verify.yml need them and the role's own (Jinja-derived) defaults are not in
+        # scope for them.
+        vector_base_path: /vector
+        vector_data_path: /vector/data
+        vector_data_dir: /var/lib/vector
+        vector_molecule_seed_marker: molecule-vector-seed-8f3a1c
+        vector_molecule_live_marker: molecule-vector-live-4d7e29
+        # A value nothing but this role's own configuration template can put onto an
+        # event. Finding it on an event that came out of the sink proves the rendered
+        # configuration reached the Vector process.
+        vector_molecule_transform_marker: molecule-transform-6b2f05
+
         # Variables for Vector
         vector_uid: 1000
         vector_gid: 1000
         vector_container_labels_traefik_enabled: false
+
+        # Deliberately NOT Vector's own default API port (8686), so that a passing
+        # /health probe cannot be explained by anything other than the role having put
+        # this value into both the rendered configuration and the port publish.
         vector_api_enabled: true
-        vector_container_api_bind_port: 8686
+        vector_container_api_port: 8687
+        vector_container_api_bind_port: "127.0.0.1:8687"
+
+        vector_container_extra_arguments:
+          - "--label molecule.extra-arguments-reached=yes"
+
+        vector_container_additional_volumes_custom:
+          - type: bind
+            src: "{{ vector_molecule_input_host_path }}"
+            dst: "{{ vector_molecule_input_container_path }}"
+            options: readonly
+
+        vector_sources_custom:
+          molecule_input:
+            type: file
+            include:
+              - "{{ vector_molecule_input_container_path }}/*.log"
+            read_from: beginning
+            fingerprint:
+              strategy: device_and_inode
+
+        vector_transforms_custom:
+          molecule_marked:
+            type: remap
+            inputs:
+              - molecule_input
+            source: |
+              .molecule_marker = "{{ vector_molecule_transform_marker }}"
+
+        vector_sinks_custom:
+          molecule_output:
+            type: file
+            inputs:
+              - molecule_marked
+            path: "{{ vector_molecule_output_path_in_container }}"
+            encoding:
+              codec: json
   env:
     # Workaround for https://github.com/ansible/molecule/issues/4391
     ANSIBLE_ROLES_PATH: ${MOLECULE_PROJECT_DIRECTORY}/..:/.ansible/roles:/usr/share/ansible/roles:/etc/ansible/roles:~/.ansible/roles

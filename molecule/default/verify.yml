@@ -1,51 +1,301 @@
+# SPDX-FileCopyrightText: 2026 Slavi Pantaleev
 # SPDX-FileCopyrightText: 2026 spatterlight
 #
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 ---
-- name: Verify Vector systemd service
+- name: Verify Vector
   hosts: all
   become: true
   gather_facts: false
+
+  vars:
+    vector_verify_units:
+      - vector.service
+
   tasks:
-    - name: Wait for Vector service to become active (up to 180s)
-      ansible.builtin.systemd:
-        name: vector.service
-      register: vector_service
-      until: vector_service.status.ActiveState == 'active'
-      retries: 36
-      delay: 5
+    - name: Verify that Vector works
+      block:
+        # The role is not included in this playbook, so its defaults are not in
+        # scope. Reading defaults/main.yml directly ties the version assertion
+        # below.
+        - name: Load the role defaults
+          ansible.builtin.include_vars:
+            file: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}/defaults/main.yml"
+            name: vector_defaults
 
-    - name: Assert Vector service is active
-      ansible.builtin.assert:
-        that: vector_service.status.ActiveState == 'active'
-        fail_msg: "vector.service not active ({{ vector_service.status.ActiveState }})"
-        success_msg: "vector.service is active"
+        - name: Wait for the Vector systemd services to become active (up to 180s each)
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+          register: vector_services
+          until: vector_services.status.ActiveState == 'active'
+          retries: 36
+          delay: 5
+          loop: "{{ vector_verify_units }}"
+          # So that giving up is reported by the assertion below rather than as a
+          # wall of systemd unit properties.
+          failed_when: false
 
-    - name: Retrieve Vector service log for debugging
-      when: vector_debug_service_enabled | bool
-      ansible.builtin.command:
-        cmd: journalctl -xeu vector.service
-      changed_when: false
+        # `Restart=always` in the systemd unit means that even a container which crashes
+        # and gets restarted reads as active here, so this is a precondition rather than
+        # a result.
+        - name: Assert the Vector systemd services are active
+          ansible.builtin.assert:
+            that: vector_services.results | map(attribute='status.ActiveState') | unique | list == ['active']
+            fail_msg: >-
+              Not every service is active:
+              {{ dict(vector_verify_units | zip(vector_services.results | map(attribute='status.ActiveState'))) }}
+            success_msg: "Every systemd service is active"
 
-    - name: Wait for Vector API /health endpoint to respond (up to 10m)
-      ansible.builtin.uri:
-        url: "http://localhost:8686/health"
-        method: GET
-        status_code: [200]
-      register: vector_endpoint
-      until: vector_endpoint.status == 200
-      retries: 120
-      delay: 5
+        - name: Retrieve the Vector systemd services log for debugging
+          when: vector_debug_service_enabled | bool
+          ansible.builtin.command:
+            cmd: "journalctl --no-pager --output=cat --unit={{ item }}"
+          changed_when: false
+          loop: "{{ vector_verify_units }}"
 
-    - name: Assert Vector API /health endpoint responds
-      ansible.builtin.assert:
-        that: vector_endpoint.status == 200
-        fail_msg: "Vector did not respond as expected ({{ vector_endpoint.status | default('no response') }})"
-        success_msg: "Vector responded with {{ vector_endpoint.status }}"
+        ########################################################################
+        #                                                                      #
+        # The deployed version is the one defaults/main.yml asks for           #
+        #                                                                      #
+        ########################################################################
 
-    - name: Show Vector systemd service status summary
-      ansible.builtin.debug:
-        msg:
-          - "Vector systemd: {{ vector_service.status.ActiveState }}"
-          - "Vector HTTP: {{ vector_endpoint.status }}"
+        # The image carries no version label, and Vector's API is gRPC-only apart from
+        # `/health`, so the binary inside the running container is the version surface.
+        - name: Query the version of the running Vector
+          ansible.builtin.command:
+            cmd: docker exec vector /usr/bin/vector --version
+          register: vector_reported_version
+          changed_when: false
+
+        # The trailing space matters: without it `0.5` would satisfy a `0.56.0` binary.
+        - name: Assert the running Vector is the version this role installs
+          ansible.builtin.assert:
+            that: vector_reported_version.stdout.startswith('vector ' ~ vector_defaults.vector_version ~ ' ')
+            fail_msg: "Vector reports {{ vector_reported_version.stdout | default('none') }}, expected {{ vector_defaults.vector_version }}"
+            success_msg: "Vector reports {{ vector_reported_version.stdout }}"
+
+        ########################################################################
+        #                                                                      #
+        # The rendered configuration is what the process is running on         #
+        #                                                                      #
+        ########################################################################
+
+        - name: Read the Vector configuration file rendered by the role
+          ansible.builtin.slurp:
+            src: "{{ vector_base_path }}/vector.yaml"
+          register: vector_rendered_configuration
+
+        - name: Assert the rendered configuration carries this scenario's values
+          ansible.builtin.assert:
+            that:
+              - "'0.0.0.0:' ~ vector_container_api_port in vector_rendered_configuration.content | b64decode"
+              - vector_molecule_transform_marker in vector_rendered_configuration.content | b64decode
+            fail_msg: "{{ vector_base_path }}/vector.yaml does not carry the values this scenario configured"
+            success_msg: "The rendered configuration carries this scenario's values"
+
+        # Vector's own default API port is 8686 and this scenario deliberately asks for
+        # 8687 instead, so a /health answer on 8687 can only be explained by the role
+        # having carried `vector_container_api_port` into both the rendered
+        # configuration and the container's port publish.
+        - name: Wait for Vector to report itself healthy (up to 180s)
+          ansible.builtin.uri:
+            url: "http://127.0.0.1:{{ vector_container_api_port }}/health"
+            method: GET
+            status_code: [200]
+          register: vector_health
+          until: vector_health.status == 200
+          retries: 36
+          delay: 5
+          # So that giving up is reported by the assertion below rather than as a
+          # wall of systemd unit properties.
+          failed_when: false
+
+        - name: Assert Vector reports itself healthy
+          ansible.builtin.assert:
+            that: vector_health.json.ok | bool
+            fail_msg: "Vector did not report itself healthy: {{ vector_health.json | default('no response') }}"
+            success_msg: "Vector reports itself healthy"
+
+        - name: Probe the API port Vector would have used had the role not configured one
+          ansible.builtin.uri:
+            url: "http://127.0.0.1:8686/health"
+            method: GET
+            timeout: 5
+          register: vector_stock_port_probe
+          failed_when: false
+          changed_when: false
+
+        - name: Assert nothing answers on Vector's stock API port
+          ansible.builtin.assert:
+            that: vector_stock_port_probe.status != 200
+            fail_msg: >-
+              Something answered /health on Vector's stock port 8686, which this scenario
+              never asked for. The health probe above therefore proves nothing about
+              `vector_container_api_port` reaching the process.
+            success_msg: "Nothing answers on Vector's stock API port, as expected"
+
+        ########################################################################
+        #                                                                      #
+        # Events actually flow through the pipeline the role rendered          #
+        #                                                                      #
+        ########################################################################
+
+        - name: Wait for the seeded event to come out of the Vector file sink (up to 150s)
+          ansible.builtin.command:
+            cmd: "grep -F -- {{ vector_molecule_seed_marker | quote }} {{ vector_molecule_output_path_on_host | quote }}"
+          register: vector_seed_event
+          until: vector_seed_event.rc == 0
+          retries: 30
+          delay: 5
+          changed_when: false
+          failed_when: false
+
+        - name: Assert the seeded event came out of the Vector file sink
+          ansible.builtin.assert:
+            that: vector_seed_event.rc == 0
+            fail_msg: >-
+              The line seeded into {{ vector_molecule_input_host_path }}/seed.log never
+              reached {{ vector_molecule_output_path_on_host }}. The `molecule_input`
+              source, the read-only bind mount carrying it, or the `molecule_output`
+              sink did not make it into the running configuration.
+            success_msg: "The seeded event travelled source -> transform -> sink"
+
+        - name: Assert the event carries the field added by the role-rendered transform
+          ansible.builtin.assert:
+            that: vector_seed_event.stdout is search(vector_molecule_transform_marker_json)
+            fail_msg: >-
+              The event reached the sink without `molecule_marker`, so the
+              `molecule_marked` transform did not run. Event: {{ vector_seed_event.stdout }}
+            success_msg: "The event carries the marker only the rendered transform could add"
+          vars:
+            vector_molecule_transform_marker_json: '"molecule_marker":"{{ vector_molecule_transform_marker }}"'
+
+        # The seeded file existed before Vector started, so on its own it cannot tell a
+        # live pipeline from one that read a file once. This one appears afterwards.
+        - name: Write a new log file while Vector is running
+          ansible.builtin.copy:
+            content: "{{ vector_molecule_live_marker }} appended while Vector was running\n"
+            dest: "{{ vector_molecule_input_host_path }}/live.log"
+            mode: "0644"
+
+        - name: Wait for the live event to come out of the Vector file sink (up to 150s)
+          ansible.builtin.command:
+            cmd: "grep -F -- {{ vector_molecule_live_marker | quote }} {{ vector_molecule_output_path_on_host | quote }}"
+          register: vector_live_event
+          until: vector_live_event.rc == 0
+          retries: 30
+          delay: 5
+          changed_when: false
+          failed_when: false
+
+        - name: Assert the live event came out of the Vector file sink
+          ansible.builtin.assert:
+            that: vector_live_event.rc == 0
+            fail_msg: >-
+              A log file written while Vector was running never reached
+              {{ vector_molecule_output_path_on_host }}, so the pipeline is not live.
+            success_msg: "An event written after start-up travelled through the pipeline"
+
+        ########################################################################
+        #                                                                      #
+        # The container is built the way the role's variables describe it      #
+        #                                                                      #
+        ########################################################################
+
+        - name: Inspect the Vector container
+          ansible.builtin.command:
+            cmd: docker inspect vector
+          register: vector_container_raw
+          changed_when: false
+
+        - name: Record the Vector container's inspection result
+          ansible.builtin.set_fact:
+            vector_container: "{{ (vector_container_raw.stdout | from_json)[0] }}"
+
+        - name: Assert the Vector container keeps the hardened non-root posture
+          ansible.builtin.assert:
+            that:
+              - vector_container.Config.User == (vector_uid | string) ~ ':' ~ (vector_gid | string)
+              - "'ALL' in vector_container.HostConfig.CapDrop"
+              - (vector_container.HostConfig.CapAdd or []) | length == 0
+              - vector_container.HostConfig.ReadonlyRootfs | bool
+            fail_msg: >-
+              No host-log source is enabled, so the container should run as
+              {{ vector_uid }}:{{ vector_gid }} with all capabilities dropped and a
+              read-only root filesystem.
+            success_msg: "The container runs non-root, capability-less and read-only"
+
+        - name: Assert vector_container_additional_volumes reached the container
+          ansible.builtin.assert:
+            that:
+              - vector_molecule_input_mounts | length == 1
+              - vector_molecule_input_mounts[0].Source == vector_molecule_input_host_path
+              - not vector_molecule_input_mounts[0].RW
+            fail_msg: >-
+              {{ vector_molecule_input_container_path }} is not mounted read-only from
+              {{ vector_molecule_input_host_path }}, so
+              `vector_container_additional_volumes` never became a `--mount` argument.
+            success_msg: "The additional volume is mounted read-only, as configured"
+          vars:
+            vector_molecule_input_mounts: "{{ vector_container.Mounts | selectattr('Destination', 'equalto', vector_molecule_input_container_path) | list }}"
+
+        - name: Assert vector_container_extra_arguments reached the container
+          ansible.builtin.assert:
+            that: vector_container.Config.Labels['molecule.extra-arguments-reached'] | default('') == 'yes'
+            fail_msg: "`vector_container_extra_arguments` did not reach the `docker create` invocation"
+            success_msg: "Extra container arguments reached the `docker create` invocation"
+
+        - name: Assert no Traefik labels are attached while Traefik support is disabled
+          ansible.builtin.assert:
+            that: vector_container.Config.Labels.keys() | select('match', '^traefik[.]') | list | length == 0
+            fail_msg: >-
+              `vector_container_labels_traefik_enabled` is false, yet the container
+              carries Traefik labels: {{ vector_container.Config.Labels }}
+            success_msg: "No Traefik labels are attached, as configured"
+
+        # `Restart=always` hides a crash-looping container behind an `active` unit, so
+        # "the unit is active" is only worth something next to this.
+        - name: Retrieve the Vector service state after the pipeline has run
+          ansible.builtin.systemd_service:
+            name: vector.service
+          register: vector_service_final
+
+        - name: Assert the Vector service has not been restarted by systemd
+          ansible.builtin.assert:
+            that:
+              # Guards the assertion below: were systemd to stop reporting this
+              # property, `| int` would happily turn the undefined value into 0.
+              - vector_service_final.status.NRestarts is defined
+              - vector_service_final.status.NRestarts | int == 0
+              - vector_service_final.status.ActiveState == 'active'
+            fail_msg: >-
+              vector.service is {{ vector_service_final.status.ActiveState | default('unknown') }}
+              and has been restarted {{ vector_service_final.status.NRestarts | default('an unknown number of') }}
+              time(s) by `Restart=always`, so the container is not staying up.
+            success_msg: "The Vector service has stayed up since it was started"
+
+        - name: Show the Vector verification summary
+          ansible.builtin.debug:
+            msg:
+              - "Vector systemd: {% for unit, state in vector_verify_units | zip(vector_services.results | map(attribute='status.ActiveState')) %}{{ unit }} ({{ state }}){% if not loop.last %}, {% endif %}{% endfor %}"
+              - "Vector version: {{ vector_reported_version.stdout }}"
+              - "Vector API on port {{ vector_container_api_port }}: HTTP {{ vector_health.status }}"
+              - "Seeded event out of the sink: {{ vector_seed_event.stdout }}"
+              - "Live event out of the sink: {{ vector_live_event.stdout }}"
+
+      rescue:
+        # Whatever went wrong, the reason is almost always in the systemd service log.
+        - name: Retrieve the Vector systemd service log
+          ansible.builtin.command:
+            cmd: journalctl --no-pager --output=cat --unit=vector.service
+          register: vector_service_log
+          changed_when: false
+
+        - name: Show the Vector systemd service log
+          ansible.builtin.debug:
+            var: vector_service_log.stdout_lines
+
+        - name: Fail because verification did not pass
+          ansible.builtin.fail:
+            msg: "Vector verification failed. The systemd service log is printed above."

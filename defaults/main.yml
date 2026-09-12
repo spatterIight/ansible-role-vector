@@ -215,6 +215,15 @@ vector_sinks_custom: {}
 # posture (runs as root and adds `DAC_OVERRIDE`/`DAC_READ_SEARCH`).
 #
 # When no host-log source is enabled, the hardened non-root posture is kept.
+#
+# These two variables have to move together. Running as root with all capabilities
+# dropped is worse than running as `vector_uid`: root without `DAC_OVERRIDE` does not
+# bypass permission checks, so Vector cannot write into `vector_data_path` (which this
+# role creates as 0750, owned by `vector_uid`:`vector_gid`) and refuses to start with
+# `Could not create subdirectory … inside of data dir … Permission denied`. Because the
+# unit is `Restart=always`, that failure shows up as a crash loop rather than as a clear
+# error. If you override `vector_container_run_as_non_root_user_enabled` to `false` by
+# itself, add `DAC_OVERRIDE` to `vector_container_capabilities_to_add` as well.
 vector_container_run_as_non_root_user_enabled: "{{ not (vector_journald_source_enabled or vector_varlog_source_enabled) }}"
 vector_container_capabilities_to_add: "{{ ['DAC_OVERRIDE', 'DAC_READ_SEARCH'] if (vector_journald_source_enabled or vector_varlog_source_enabled) else [] }}"
 
