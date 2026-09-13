@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2018-2025 Slavi Pantaleev
+SPDX-FileCopyrightText: 2018-2026 Slavi Pantaleev
 SPDX-FileCopyrightText: 2019-2022 Aaron Raimist
 SPDX-FileCopyrightText: 2019-2023 MDAD project contributors
 SPDX-FileCopyrightText: 2023 QEDeD
@@ -47,7 +47,18 @@ Currently there is one testing scenario available.
 
 ### `default`
 
-Tests a standard Vector installation.
+Deploys Vector and then pushes an event all the way through the pipeline the role rendered.
+
+`prepare.yml` writes a seed log file into a directory on the host. The scenario hands that directory to the role as a read-only `vector_container_additional_volumes_custom` entry, adds a `file` source reading it, a `remap` transform stamping a marker onto every event, and a `file` sink writing back into Vector's data directory. `verify.yml` then asserts that:
+
+- the running Vector binary reports the version `vector_version` asks for — this is what makes a Renovate version bump a testable change rather than a string edit
+- the seeded event came out of the sink carrying the marker only the role-rendered transform could add
+- a log file written *after* Vector started also came out of the sink, so the pipeline is live rather than having read a file once
+- Vector's API answers `/health` on `vector_container_api_port`, and nothing answers on Vector's own default port (8686), which the scenario deliberately does not use
+- the container runs non-root, with all capabilities dropped and a read-only root filesystem, carries the additional volume read-only, carries `vector_container_extra_arguments`, and carries no Traefik labels while Traefik support is off
+- systemd has not restarted the unit — `Restart=always` would otherwise report a crash-looping container as `active`
+
+An unconfigured `timberio/vector` image exits immediately with code 78 (`Config file not found in path`) and ships no fallback configuration, so none of the above can pass against an instance the role did not configure.
 
 ## Running
 

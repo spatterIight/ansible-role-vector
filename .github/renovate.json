@@ -1,51 +1,20 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "Patch-automerge is on: Vector is a stateless stream processor with no schema or data migrations, and all 35 of its upstream upgrade guides target a 0.X.0 minor release - not one patch release has ever had one. The Molecule scenario deploys the bumped image tag, asserts the running binary reports vector_version, and pushes an event through a source, a transform and a sink.",
+    "The extractVersion rule below is what makes any update appear at all: timberio/vector publishes no plain X.Y.Z tag whatsoever, only distribution-flavoured ones, so the pinned 0.56.0 did not exist in the namespace Renovate searched and this role was never bumped. The rule is tied to vector_container_image_distribution's `debian` default; changing that default means changing the rule too."
+  ],
   "extends": [
-    "config:best-practices",
-    ":automergeAll",
-    ":automergeBranch",
-    ":semanticCommitsDisabled"
+    "github>mother-of-all-self-hosting/renovate-config#v1.0.0",
+    "github>mother-of-all-self-hosting/renovate-config//patch-automerge#v1.0.0"
   ],
-  "ignorePresets": [
-    "docker:pinDigests",
-    ":maintainLockFilesWeekly"
-  ],
-  "labels": [
-    "dependencies"
-  ],
-  "ansible-galaxy": {
-    "ignoreUnstable": false,
-    "versioning": "loose"
-  },
-  "pre-commit": {
-    "enabled": true
-  },
-  "regex": {
-    "automerge": false
-  },
   "packageRules": [
     {
-      "matchManagers": ["github-actions"],
-      "commitBody": "[skip ci]",
-      "schedule": ["* * 1-7 */6 *"],
-      "automergeSchedule": ["* * 1-14 */6 *"],
-      "groupName": "GitHub Actions dependencies"
-    },
-    {
-      "matchManagers": ["mise", "pip_requirements", "pre-commit", "pyenv"],
-      "schedule": ["* * 1-7 */6 *"],
-      "automergeSchedule": ["* * 1-14 */6 *"]
-    }
-  ],
-  "customManagers": [
-    {
-      "customType": "regex",
-      "managerFilePatterns": [
-        "/defaults/main.yml$/"
-      ],
-      "matchStrings": [
-        "# renovate: datasource=(?<datasource>[a-z-.]+?) depName=(?<depName>[^\\s]+?)(?: (?:lookupName|packageName)=(?<packageName>[^\\s]+?))?(?: versioning=(?<versioning>[a-z-0-9]+?))?\\s+[A-Za-z0-9_]+?(?:_version|_tag)\\s*:\\s*[\"']?(?<currentValue>.+?)[\"']?\\s"
-      ]
+      "description": "Read versions out of the `-debian` tags that vector_container_image_tag composes, ignoring the other distribution flavours, the `nightly-*` builds and the `X.Y.Z.custom.<sha>-*` ones",
+      "matchManagers": ["custom.regex"],
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["timberio/vector"],
+      "extractVersion": "^(?<version>\\d+\\.\\d+\\.\\d+)-debian$"
     }
   ]
 }

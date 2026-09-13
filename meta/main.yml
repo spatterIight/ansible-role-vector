@@ -1,7 +1,9 @@
 ---
 galaxy_info:
   author: spatterlight
+  company: spatterlight
   role_name: vector
+  namespace: spatterlight
   description: An Ansible role for installing Vector, a lightweight, ultra-fast tool for building observability pipelines
   platforms:
     - name: Debian
