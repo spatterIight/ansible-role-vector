@@ -1,9 +1,19 @@
 # SPDX-FileCopyrightText: 2023 Slavi Pantaleev
 # SPDX-FileCopyrightText: 2025 spatterlight
+# SPDX-FileCopyrightText: 2025, 2026 Suguru Hirahara
 #
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 ---
+- name: (Deprecation) Catch and report renamed settings
+  ansible.builtin.fail:
+    msg: >-
+      Your configuration contains a variable, which now has a different name.
+      Please change your configuration to rename the variable (`{{ item.old }}` -> `{{ item.new }}`).
+  when: "lookup('ansible.builtin.varnames', ('^' + item.old + '$'), wantlist=True) | length > 0"
+  with_items:
+    - { "old": "vector_distro", "new": "vector_distro_variant" }
+
 - name: Fail if required Vector settings not defined
   ansible.builtin.fail:
     msg: >-
@@ -24,11 +34,11 @@
   ansible.builtin.fail:
     msg: >-
       You have enabled `vector_journald_source_enabled`, but
-      `vector_container_image_distribution` is set to `{{ vector_container_image_distribution }}`.
+      `vector_distro_variant` is set to `{{ vector_distro_variant }}`.
       Vector's `journald` source shells out to the `journalctl` binary, which is only
-      bundled in the `debian` image variant. Set `vector_container_image_distribution: debian`
+      bundled in the `debian` image variant. Set `vector_distro_variant: debian`
       (or mount a `journalctl` binary yourself and override the source's `journalctl_path`).
-  when: "vector_journald_source_enabled | bool and vector_container_image_distribution != 'debian'"
+  when: "vector_journald_source_enabled | bool and vector_distro_variant != 'debian'"
 
 - name: Validate Vector Traefik configuration
   when: vector_container_labels_traefik_enabled | bool

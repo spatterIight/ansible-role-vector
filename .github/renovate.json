@@ -2,7 +2,7 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": [
     "Patch-automerge is on: Vector is a stateless stream processor with no schema or data migrations, and all 35 of its upstream upgrade guides target a 0.X.0 minor release - not one patch release has ever had one. The Molecule scenario deploys the bumped image tag, asserts the running binary reports vector_version, and pushes an event through a source, a transform and a sink.",
-    "The extractVersion rule below is what makes any update appear at all: timberio/vector publishes no plain X.Y.Z tag whatsoever, only distribution-flavoured ones, so the pinned 0.56.0 did not exist in the namespace Renovate searched and this role was never bumped. The rule is tied to vector_container_image_distribution's `debian` default; changing that default means changing the rule too."
+    "The extractVersion rule below is what makes any update appear at all: timberio/vector publishes no plain X.Y.Z tag whatsoever, only distribution-flavoured ones, so the pinned 0.56.0 did not exist in the namespace Renovate searched and this role was never bumped. The rule is tied to vector_distro_variant's `debian` default; changing that default means changing the rule too."
   ],
   "extends": [
     "github>mother-of-all-self-hosting/renovate-config#v1.0.0",

@@ -25,10 +25,6 @@ vector_gid: ""
 vector_version: 0.56.0
 vector_arch: amd64
 
-# The Vector image distribution variant to use.
-# One of: debian, alpine, distroless-libc, distroless-static
-vector_container_image_distribution: debian
-
 # The hostname at which Vector's API is served (only relevant when exposing
 # the API via a reverse proxy such as Traefik).
 vector_hostname: ""
@@ -52,10 +48,14 @@ vector_debugging_enabled: false
 vector_api_enabled: false
 
 vector_container_image: "{{ vector_container_image_registry_prefix }}timberio/vector:{{ vector_container_image_tag }}"
-vector_container_image_tag: "{{ vector_version }}-{{ vector_container_image_distribution }}"
+vector_container_image_tag: "{{ vector_version }}-{{ vector_distro_variant }}"
 vector_container_image_registry_prefix: "{{ vector_container_image_registry_prefix_upstream }}"
 vector_container_image_registry_prefix_upstream: "{{ vector_container_image_registry_prefix_upstream_default }}"
 vector_container_image_registry_prefix_upstream_default: docker.io/
+
+# Specify the Vector image distribution variant to use.
+# Valid values: debian, alpine, distroless-libc, distroless-static
+vector_distro_variant: debian
 
 # The base container network. It will be auto-created by this role if it doesn't exist already.
 vector_container_network: "{{ vector_identifier }}"
@@ -230,7 +230,7 @@ vector_container_capabilities_to_add: "{{ ['DAC_OVERRIDE', 'DAC_READ_SEARCH'] if
 # journald source: ships the host's systemd journal to the Vector pipeline.
 #
 # Vector's `journald` source shells out to the `journalctl` binary, which is only
-# present in the `debian` image variant (`vector_container_image_distribution`), not in
+# present in the `debian` image variant (`vector_distro_variant`), not in
 # the alpine/distroless variants. `validate_config.yml` enforces this.
 #
 # When enabled, this wires up two components:

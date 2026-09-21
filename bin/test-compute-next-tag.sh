@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
+
 # SPDX-FileCopyrightText: 2026 Slavi Pantaleev
+# SPDX-FileCopyrightText: 2026 Suguru Hirahara
 #
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -52,9 +54,9 @@ scenario() {
 		# vector_version: 9.9.9
 		# renovate: datasource=docker depName=timberio/vector versioning=semver
 		vector_version: 0.56.0
-		vector_container_image_distribution: debian
+		vector_distro_variant: debian
 		vector_container_image: "{{ vector_container_image_registry_prefix }}timberio/vector:{{ vector_container_image_tag }}"
-		vector_container_image_tag: "{{ vector_version }}-{{ vector_container_image_distribution }}"
+		vector_container_image_tag: "{{ vector_version }}-{{ vector_distro_variant }}"
 	YAML
 	printf 'placeholder\n' > meta/main.yml
 	printf 'placeholder\n' > tasks/main.yml
@@ -106,7 +108,7 @@ expect() {
 
 bump_version="sed -i 's|^vector_version: 0.56.0|vector_version: 0.57.0|' defaults/main.yml"
 revert_version="sed -i 's|^vector_version: 0.57.0|vector_version: 0.56.0|' defaults/main.yml"
-change_distribution="sed -i 's|^vector_container_image_distribution: debian|vector_container_image_distribution: alpine|' defaults/main.yml"
+change_distribution="sed -i 's|^vector_distro_variant: debian|vector_distro_variant: alpine|' defaults/main.yml"
 edit_task="printf 'a task\n' >> tasks/main.yml"
 edit_template="printf 'a line\n' >> templates/env.j2"
 edit_readme="printf 'documentation\n' >> README.md"

@@ -1,6 +1,7 @@
 <!--
 SPDX-FileCopyrightText: 2025 spatterlight
 SPDX-FileCopyrightText: 2026 Slavi Pantaleev
+SPDX-FileCopyrightText: 2026 Suguru Hirahara
 
 SPDX-License-Identifier: AGPL-3.0-or-later
 -->
@@ -44,4 +45,4 @@ Tags are created by [`.github/workflows/autotag.yml`](.github/workflows/autotag.
 
 ### Version updates
 
-[Renovate](https://docs.renovatebot.com/) proposes Vector version bumps by reading [`.github/renovate.json`](./.github/renovate.json). Note that `timberio/vector` publishes **no** plain `X.Y.Z` tags — every tag carries a distribution suffix (`-debian`, `-alpine`, `-distroless-libc`, `-distroless-static`) — so the configuration recovers the version from the `-debian` tags that `vector_container_image_tag` composes. Changing the default of `vector_container_image_distribution` means changing that rule too, or Renovate goes blind again.
+[Renovate](https://docs.renovatebot.com/) proposes Vector version bumps by reading [`.github/renovate.json`](./.github/renovate.json). Note that `timberio/vector` publishes **no** plain `X.Y.Z` tags — every tag carries a distribution suffix (`-debian`, `-alpine`, `-distroless-libc`, `-distroless-static`) — so the configuration recovers the version from the `-debian` tags that `vector_container_image_tag` composes. Changing the default of `vector_distro_variant` means changing that rule too, or Renovate goes blind again.
