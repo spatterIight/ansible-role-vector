@@ -21,7 +21,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 This is an [Ansible](https://www.ansible.com/) role which installs [Vector](https://vector.dev/) to run as a [Docker](https://www.docker.com/) container wrapped in a systemd service.
 
-Vector is a high-performance observability data pipeline that lets you collect, transform, and route logs and metrics from many sources to many destinations (sinks).
+Vector is a high-performance observability data pipeline that lets you collect, transform, and route logs and metrics from many sources to many destinations ("sinks").
 
 See the project's [documentation](https://vector.dev/docs/) to learn what Vector does and why it might be useful to you.
 
