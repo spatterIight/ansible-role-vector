@@ -12,20 +12,18 @@ SPDX-FileCopyrightText: 2023 Antonis Christofides
 SPDX-FileCopyrightText: 2023 Felix Stupp
 SPDX-FileCopyrightText: 2023 Pierre 'McFly' Marty
 SPDX-FileCopyrightText: 2024-2026 Suguru Hirahara
+SPDX-FileCopyrightText: 2026 MASH project contributors
 
 SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
 # Setting up Vector
 
-This is an [Ansible](https://www.ansible.com/) role which installs [Vector](https://github.com/vector-team/vector) to run as a [Docker](https://www.docker.com/) container wrapped in a systemd service.
+This is an [Ansible](https://www.ansible.com/) role which installs [Vector](https://vector.dev/) to run as a [Docker](https://www.docker.com/) container wrapped in a systemd service.
 
-Vector is a media request and discovery manager with support for [Jellyfin](https://jellyfin.org/), [Plex](https://plex.tv/), and [Emby](https://emby.media/).
+Vector is a high-performance observability data pipeline that lets you collect, transform, and route logs and metrics from many sources to many destinations (sinks).
 
-See the project's [documentation](https://docs.vector.dev/) to learn what Vector does and why it might be useful to you.
-
->[!NOTE]
-> If you are looking for an Ansible role for Jellyfin and Plex, you can check out [ansible-role-jellyfin](https://github.com/spatterIight/ansible-role-jellyfin) and [ansible-role-plex](https://github.com/spatterIight/ansible-role-plex), both of which are maintained by me.
+See the project's [documentation](https://vector.dev/docs/) to learn what Vector does and why it might be useful to you.
 
 ## Adjusting the playbook configuration
 
@@ -49,18 +47,111 @@ vector_enabled: true
 ########################################################################
 ```
 
-### Set the hostname
+To extend the default configuration we show you a few built-in log sources you can easily enable below. To build your own extend the default sources, transforms, and sinks through the `vector_sources_custom`, `vector_transforms_custom`, and `vector_sinks_custom` variables.
 
-To enable Vector you need to set the hostname as well. To do so, add the following configuration to your `vars.yml` file. Make sure to replace `example.com` with your own value.
+### Collecting system logs (journald and `/var/log`)
+
+To collect the host's systemd journal and/or textual log files under `/var/log`, enable the built-in log sources:
 
 ```yaml
-vector_hostname: "example.com"
+# Collect the host's systemd journal
+vector_journald_source_enabled: true
+
+# Collect textual log files found under /var/log
+vector_varlog_source_enabled: true
 ```
 
-After adjusting the hostname, make sure to adjust your DNS records to point the domain to your server.
+Each enabled source becomes a stream you reference in a sink's `inputs`:
 
->[!NOTE]
-> The `vector_path_prefix` variable can be adjusted to host under a subpath (e.g. `vector_path_prefix: /vector`), but this hasn't been tested yet.
+- `journald` — carries a `service_name` field (derived from the systemd unit, falling back to the syslog identifier).
+- `varlog` — carries a `file` field with the source file's path.
+
+### Shipping logs to Grafana Loki
+
+If [Grafana Loki](grafana-loki.md) runs on the same server, Vector automatically joins Loki's container network when `loki_enabled` is set, so you can ship logs to it directly over the container network.
+
+Add `loki` sinks with the following additional configuration. Use a separate sink per stream, since a sink applies one `labels` block to all its inputs and `journald`/`varlog` carry different fields:
+
+```yaml
+vector_sinks_custom:
+  loki_journald:
+    type: loki
+    inputs:
+      - journald
+    endpoint: "{{ loki_scheme }}://{{ loki_identifier }}:{{ loki_server_http_listen_port }}"
+    tenant_id: mash
+    encoding:
+      codec: text
+    labels:
+      source: vector
+      service_name: "{{ '{{ service_name }}' }}"
+      host: "{{ '{{ host }}' }}"
+
+  loki_varlog:
+    type: loki
+    inputs:
+      - varlog
+    endpoint: "{{ loki_scheme }}://{{ loki_identifier }}:{{ loki_server_http_listen_port }}"
+    tenant_id: mash
+    encoding:
+      codec: text
+    labels:
+      source: vector
+      filename: "{{ '{{ file }}' }}"
+      host: "{{ ansible_hostname | default(inventory_hostname) }}"
+```
+
+> [!WARNING]
+> A `{{ '{{ field }}' }}` label must reference a field present and non-empty on **every** event the sink receives, otherwise Vector drops the event and logs a warning. Never route `internal_logs` into such a sink: it carries those warnings, so a failed render feeds back into the sink and can pin the CPU. Only label on guaranteed fields (`service_name` on `journald`, `file` on `varlog`); `unit` and `syslog_identifier` are empty for unit-less entries like kernel messages, so they are not safe to label on.
+
+For connecting to a remote Loki instance, set `endpoint` to the public hostname (e.g. `https://mash.example.com/loki`) and adjust authentication as needed.
+
+You can then add Loki as a datasource in Grafana — refer to [Integrating with a local Loki instance](grafana.md#integrating-with-a-local-loki-instance) on the Grafana documentation page.
+
+### Exposing metrics to Prometheus
+
+To let [Prometheus](prometheus.md) collect Vector's metrics, add a `prometheus_exporter` sink that exposes them on a port:
+
+```yaml
+vector_sinks_custom:
+  prometheus:
+    type: prometheus_exporter
+    inputs:
+      - internal_metrics
+    address: 0.0.0.0:9598
+```
+
+Then, on the Prometheus side, add a scrape job targeting Vector over the container network (Prometheus needs to share Vector's network, so this is configured on the Prometheus side):
+
+```yaml
+prometheus_config_scrape_configs_additional:
+  - job_name: vector
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - "{{ vector_identifier }}:9598"
+```
+
+Refer to [Scraping other exporter services](prometheus.md#scraping-other-exporter-services) on the Prometheus documentation page for more details.
+
+### Exposing the API (optional)
+
+Vector ships a GraphQL API (with a `/health` endpoint and an interactive `/playground`) that powers `vector top` / `vector tap`. It is disabled by default. To enable it and expose it publicly through [Traefik](traefik.md), set a hostname:
+
+```yaml
+vector_api_enabled: true
+vector_hostname: mash.example.com
+vector_path_prefix: /vector
+```
+
+>[!WARNING]
+> Vector's API has no authentication of its own. Whenever you expose it publicly, protect it with HTTP Basic Authentication:
+>
+> ```yaml
+> vector_container_labels_api_middleware_basic_auth_enabled: true
+> # See https://doc.traefik.io/traefik/middlewares/http/basicauth/#users for the format.
+> vector_container_labels_api_middleware_basic_auth_users: ""
+> ```
 
 ### Extending the configuration
 
@@ -82,7 +173,11 @@ If you use the MASH playbook, the shortcut commands with the [`just` program](ht
 
 ## Usage
 
-After running the command for installation, Vector becomes available at the specified hostname like `https://example.com`.
+By default Vector is configured to output its own internal logs and write them as JSON to the console. After running the command for installation you can observe its output with:
+
+```sh
+journalctl -fu mash-vector
+```
 
 ## Troubleshooting
 
