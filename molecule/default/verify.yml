@@ -241,11 +241,19 @@
           vars:
             vector_molecule_input_mounts: "{{ vector_container.Mounts | selectattr('Destination', 'equalto', vector_molecule_input_container_path) | list }}"
 
-        - name: Assert vector_container_extra_arguments reached the container
+        # ------------------------------------------------------------------
+        # Traefik labels
+        # ------------------------------------------------------------------
+
+        - name: Assert that the extra arguments reached the container
           ansible.builtin.assert:
-            that: vector_container.Config.Labels['molecule.extra-arguments-reached'] | default('') == 'yes'
-            fail_msg: "`vector_container_extra_arguments` did not reach the `docker create` invocation"
-            success_msg: "Extra container arguments reached the `docker create` invocation"
+            that:
+              - vector_container.Config.Labels['mash.molecule.extra-argument'] == 'set-by-the-role'
+            fail_msg: >-
+              vector_container_labels_additional_labels or
+              vector_container_extra_arguments did not reach the container:
+              {{ vector_container.Config.Labels }}
+            success_msg: "The additional label and the extra argument both reached the container"
 
         - name: Assert no Traefik labels are attached while Traefik support is disabled
           ansible.builtin.assert:

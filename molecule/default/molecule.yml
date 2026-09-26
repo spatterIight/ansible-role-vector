@@ -67,14 +67,14 @@ provisioner:
         vector_container_api_port: 8687
         vector_container_api_host_bind_port: "127.0.0.1:8687"
 
-        vector_container_extra_arguments:
-          - "--label molecule.extra-arguments-reached=yes"
-
         vector_container_additional_volumes_custom:
           - type: bind
             src: "{{ vector_molecule_input_host_path }}"
             dst: "{{ vector_molecule_input_container_path }}"
             options: readonly
+
+        vector_container_extra_arguments:
+          - "--label=mash.molecule.extra-argument=set-by-the-role"
 
         vector_sources_custom:
           molecule_input:
