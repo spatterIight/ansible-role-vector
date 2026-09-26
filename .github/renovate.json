@@ -5,8 +5,8 @@
     "The extractVersion rule below is what makes any update appear at all: timberio/vector publishes no plain X.Y.Z tag whatsoever, only distribution-flavoured ones, so the pinned 0.56.0 did not exist in the namespace Renovate searched and this role was never bumped. The rule is tied to vector_distro_variant's `debian` default; changing that default means changing the rule too."
   ],
   "extends": [
-    "github>mother-of-all-self-hosting/renovate-config#v1.0.0",
-    "github>mother-of-all-self-hosting/renovate-config//patch-automerge#v1.0.0"
+    "github>mother-of-all-self-hosting/renovate-config#v1.1.0",
+    "github>mother-of-all-self-hosting/renovate-config//patch-automerge#v1.1.0"
   ],
   "packageRules": [
     {
