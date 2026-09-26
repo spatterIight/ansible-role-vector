@@ -22,7 +22,7 @@ vector_uid: ""
 vector_gid: ""
 
 # renovate: datasource=docker depName=timberio/vector versioning=semver
-vector_version: 0.56.0
+vector_version: 0.58.0
 vector_arch: amd64
 
 # The hostname at which Vector's API is served (only relevant when exposing
