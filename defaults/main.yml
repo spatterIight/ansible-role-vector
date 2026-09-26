@@ -9,7 +9,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 ---
-
 # Project source code URL: https://github.com/vectordotdev/vector
 
 vector_enabled: true
@@ -18,34 +17,19 @@ vector_identifier: vector
 vector_base_path: "/{{ vector_identifier }}"
 vector_data_path: "{{ vector_base_path }}/data"
 
-vector_uid: ""
-vector_gid: ""
-
 # renovate: datasource=docker depName=timberio/vector versioning=semver
 vector_version: 0.58.0
 vector_arch: amd64
 
-# The hostname at which Vector's API is served (only relevant when exposing
-# the API via a reverse proxy such as Traefik).
+vector_uid: ""
+vector_gid: ""
+
+# The hostname at which Vector's API is served.
 vector_hostname: ""
 
-# The path at which Vector is served behind a reverse proxy.
+# The path at which Vector's API is served.
 # This value must either be `/` or not end with a slash (e.g. `/vector`).
 vector_path_prefix: /
-
-# Controls Vector's log verbosity by setting the `VECTOR_LOG` environment variable.
-# When enabled, the log level is raised to `debug`.
-vector_debugging_enabled: false
-
-# Controls Vector's GraphQL API.
-#
-# The API is disabled by default (matching Vector's upstream default).
-# When enabled, Vector exposes an HTTP `/health` endpoint, a GraphQL endpoint,
-# and an interactive `/playground`. It powers `vector top`/`vector tap`.
-#
-# The API has no authentication of its own. When exposing it, secure it via a
-# reverse proxy (see `vector_container_labels_api_middleware_basic_auth_*`).
-vector_api_enabled: false
 
 vector_container_image: "{{ vector_container_image_registry_prefix }}timberio/vector:{{ vector_container_image_tag }}"
 vector_container_image_tag: "{{ vector_version }}-{{ vector_distro_variant }}"
@@ -63,33 +47,31 @@ vector_container_network: "{{ vector_identifier }}"
 # Control if the container network is deleted on uninstalling.
 vector_container_network_deletion_enabled: true
 
+# Specify how the container publishes its HTTP port for the API (as defined by `vector_container_api_port`).
+#
+# Takes an "<ip>:<port>" or "<port>" value (e.g. "127.0.0.1:2586"), or empty string to not expose.
+vector_container_api_host_bind_port: ""
+
+# A port number for the API in the container
+vector_container_api_port: 8686
+
 # A list of additional container networks that the container would be connected to.
 # The role does not create these networks, so make sure they already exist.
+# Use this to expose this container to another reverse proxy, which runs in a different container network.
 vector_container_additional_networks: "{{ (vector_container_additional_networks_default + vector_container_additional_networks_auto + vector_container_additional_networks_custom) | unique }}"
 vector_container_additional_networks_default: []
 vector_container_additional_networks_auto: []
 vector_container_additional_networks_custom: []
 
-# List of systemd services that the Vector systemd service depends on
-vector_systemd_required_services_list: "{{ (vector_systemd_required_services_list_default + vector_systemd_required_services_list_auto + vector_systemd_required_services_list_custom) | unique }}"
-vector_systemd_required_services_list_default: "{{ [devture_systemd_docker_base_docker_service_name] if devture_systemd_docker_base_docker_service_name else [] }}"
-vector_systemd_required_services_list_auto: []
-vector_systemd_required_services_list_custom: []
-
-# List of systemd services that the Vector systemd service wants
-vector_systemd_wanted_services_list: "{{ (vector_systemd_wanted_services_list_default + vector_systemd_wanted_services_list_auto + vector_systemd_wanted_services_list_custom) | unique }}"
-vector_systemd_wanted_services_list_default: []
-vector_systemd_wanted_services_list_auto: []
-vector_systemd_wanted_services_list_custom: []
-
-# The port Vector's API listens on inside the container.
-vector_container_api_port: 8686
-
-# Controls whether the container exposes the API port on the host.
-# Can be used to access the API/playground directly (bypassing Traefik).
-#
-# Takes an "<ip>:<port>" or "<port>" value (e.g. "127.0.0.1:8686"), or empty string to not expose.
-vector_container_api_bind_port: ""
+# A list of additional "volumes" to mount in the container.
+# This list gets populated dynamically at runtime. You can provide a different default value,
+# if you wish to mount your own files into the container.
+# Contains definition objects like this: `{"type": "bind", "src": "/outside", "dst": "/inside", "options": "readonly"}.
+# See the `--mount` documentation for the `docker run` command.
+vector_container_additional_volumes: "{{ vector_container_additional_volumes_default + vector_container_additional_volumes_auto + vector_container_additional_volumes_custom }}"
+vector_container_additional_volumes_default: "{{ (vector_journald_source_additional_volumes if vector_journald_source_enabled else []) + (vector_varlog_source_additional_volumes if vector_varlog_source_enabled else []) }}"
+vector_container_additional_volumes_auto: []
+vector_container_additional_volumes_custom: []
 
 # vector_container_labels_traefik_enabled controls whether labels to assist a Traefik reverse-proxy will be attached to the container.
 # See `../templates/labels.j2` for details.
@@ -104,60 +86,154 @@ vector_container_labels_traefik_rule: "Host(`{{ vector_container_labels_traefik_
 vector_container_labels_traefik_priority: 0
 vector_container_labels_traefik_entrypoints: web-secure
 vector_container_labels_traefik_tls: "{{ vector_container_labels_traefik_entrypoints != 'web' }}"
-vector_container_labels_traefik_tls_certResolver: default  # noqa var-naming
-
-# Controls whether a Traefik basic-auth middleware is attached to the API router.
-# As Vector's API has no authentication of its own, enabling basic auth is strongly
-# recommended whenever the API is exposed publicly.
-#
-# See: https://doc.traefik.io/traefik/reference/routing-configuration/http/middlewares/basicauth/
+vector_container_labels_traefik_tls_certResolver: default # noqa var-naming
 vector_container_labels_api_middleware_basic_auth_enabled: false
-# A comma-separated list of `user:hashed-password` entries (htpasswd format).
+# See: https://doc.traefik.io/traefik/reference/routing-configuration/http/middlewares/basicauth/
 vector_container_labels_api_middleware_basic_auth_users: ""
+
+# Controls which additional headers to attach to all HTTP requests.
+# To add your own custom request headers, use `vector_container_labels_traefik_additional_request_headers_custom`
+vector_container_labels_traefik_additional_request_headers: "{{ vector_container_labels_traefik_additional_request_headers_auto | combine(vector_container_labels_traefik_additional_request_headers_custom) }}"
+vector_container_labels_traefik_additional_request_headers_auto: {}
+vector_container_labels_traefik_additional_request_headers_custom: {}
+
+# Controls which additional headers to attach to all HTTP responses.
+# To add your own custom response headers, use `vector_container_labels_traefik_additional_response_headers_custom`
+vector_container_labels_traefik_additional_response_headers: "{{ vector_container_labels_traefik_additional_response_headers_auto | combine(vector_container_labels_traefik_additional_response_headers_custom) }}"
+vector_container_labels_traefik_additional_response_headers_auto: |
+  {{
+    {}
+    | combine ({'X-XSS-Protection': vector_http_header_xss_protection} if vector_http_header_xss_protection else {})
+    | combine ({'X-Content-Type-Options': vector_http_header_content_type_options} if vector_http_header_content_type_options else {})
+    | combine ({'Content-Security-Policy': vector_http_header_content_security_policy} if vector_http_header_content_security_policy else {})
+    | combine ({'Permissions-Policy': vector_http_header_permissions_policy} if vector_http_header_permissions_policy else {})
+    | combine ({'Strict-Transport-Security': vector_http_header_strict_transport_security} if vector_http_header_strict_transport_security and vector_container_labels_traefik_tls else {})
+  }}
+vector_container_labels_traefik_additional_response_headers_custom: {}
 
 # vector_container_labels_additional_labels contains a multiline string with additional labels to add to the container label file.
 # See `../templates/labels.j2` for details.
+# To add your own custom labels, use `vector_container_labels_additional_labels_custom`
 #
 # Example:
-# vector_container_labels_additional_labels: |
-#   my.label=1
-#   another.label="here"
-vector_container_labels_additional_labels: ""
+# vector_container_labels_additional_labels_custom:
+#   - my.label=1
+#   - another.label="here"
+vector_container_labels_additional_labels: "{{ vector_container_labels_additional_labels_auto + vector_container_labels_additional_labels_custom }}"
+vector_container_labels_additional_labels_auto: []
+vector_container_labels_additional_labels_custom: []
 
-# vector_environment_variables_additional_variables contains a multiline string with additional environment variables to pass to the container.
-#
-# Example:
-# vector_environment_variables_additional_variables: |
-#   VAR=1
-#   ANOTHER=value
-vector_environment_variables_additional_variables: ""
+# A list of extra arguments to pass to the container (`docker create` command)
+vector_container_extra_arguments: "{{ vector_container_extra_arguments_auto + vector_container_extra_arguments_custom }}"
+vector_container_extra_arguments_auto: []
+vector_container_extra_arguments_custom: []
 
-# A list of additional "volumes" to mount in the container.
-#
-# See the `--mount` documentation for the `docker run` command.
-#
-# This list is assembled from 3 parts:
-# - `_default` is populated automatically based on the enabled built-in log sources
-#   (journald/varlog), so you usually don't need to touch it.
-# - `_auto` is reserved for other roles to inject mounts programmatically.
-# - `_custom` is where you add your own mounts.
-#
-# Example:
-# vector_container_additional_volumes_custom:
-#   - type: bind
-#     src: /path/on/the/host
-#     dst: /data
-#   - type: bind
-#     src: /another-path/on/the/host
-#     dst: /read-only
-#     options: readonly
-vector_container_additional_volumes: "{{ vector_container_additional_volumes_default + vector_container_additional_volumes_auto + vector_container_additional_volumes_custom }}"
-vector_container_additional_volumes_default: "{{ (vector_journald_source_additional_volumes if vector_journald_source_enabled else []) + (vector_varlog_source_additional_volumes if vector_varlog_source_enabled else []) }}"
-vector_container_additional_volumes_auto: []
-vector_container_additional_volumes_custom: []
+# A list of extra arguments to pass to the process inside the container
+# Example: ['--SOME_ARGUMENT']
+vector_process_extra_arguments: "{{ vector_process_extra_arguments_auto + vector_process_extra_arguments_custom }}"
+vector_process_extra_arguments_auto:
+  - --config /etc/vector/vector.yaml
+vector_process_extra_arguments_custom: []
 
-# A list of extra arguments to pass to the container
-vector_container_extra_arguments: []
+# Specifies the value of the `X-XSS-Protection` header
+# Stops pages from loading when they detect reflected cross-site scripting (XSS) attacks.
+#
+# Learn more about it is here:
+# - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-XSS-Protection
+# - https://portswigger.net/web-security/cross-site-scripting/reflected
+vector_http_header_xss_protection: "1; mode=block"
+
+# Specifies the value of the `X-Content-Type-Options` header.
+# See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options
+vector_http_header_content_type_options: nosniff
+
+# Specifies the value of the `Content-Security-Policy` header.
+# See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy
+vector_http_header_content_security_policy: frame-ancestors 'self'
+
+# Specifies the value of the `Permissions-Policy` header.
+# See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy
+vector_http_header_permissions_policy: "{{ 'interest-cohort=()' if vector_floc_optout_enabled else '' }}"
+
+# Specifies the value of the `Strict-Transport-Security` header.
+# See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+vector_http_header_strict_transport_security: "max-age=31536000; includeSubDomains{{ '; preload' if vector_hsts_preload_enabled else '' }}"
+
+# Controls whether to send a "Permissions-Policy interest-cohort=();" header along with all responses
+#
+# Learn more about what it is here:
+# - https://www.eff.org/deeplinks/2021/03/googles-floc-terrible-idea
+# - https://paramdeo.com/blog/opting-your-website-out-of-googles-floc-network
+# - https://amifloced.org/
+#
+# Of course, a better solution is to just stop using browsers (like Chrome), which participate in such tracking practices.
+# See: `vector_http_header_permissions_policy`
+vector_floc_optout_enabled: true
+
+# Controls if HSTS preloading is enabled
+#
+# In its strongest and recommended form, the [HSTS policy](https://www.chromium.org/hsts) includes all subdomains, and
+# indicates a willingness to be "preloaded" into browsers:
+# `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`
+# For more information visit:
+# - https://en.wikipedia.org/wiki/HTTP_Strict_Transport_Security
+# - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+# - https://hstspreload.org/#opt-in
+# See: `vector_http_header_strict_transport_security`
+vector_hsts_preload_enabled: false
+
+# List of systemd services that the Vector systemd service depends on
+vector_systemd_required_services_list: "{{ (vector_systemd_required_services_list_default + vector_systemd_required_services_list_auto + vector_systemd_required_services_list_custom) | unique }}"
+vector_systemd_required_services_list_default: "{{ [devture_systemd_docker_base_docker_service_name] if devture_systemd_docker_base_docker_service_name else [] }}"
+vector_systemd_required_services_list_auto: []
+vector_systemd_required_services_list_custom: []
+
+# List of systemd services that the Vector systemd service wants
+vector_systemd_wanted_services_list: "{{ (vector_systemd_wanted_services_list_default + vector_systemd_wanted_services_list_auto + vector_systemd_wanted_services_list_custom) | unique }}"
+vector_systemd_wanted_services_list_default: []
+vector_systemd_wanted_services_list_auto: []
+vector_systemd_wanted_services_list_custom: []
+
+# Controls how long to wait for the container to stop gracefully before killing it.
+vector_container_stop_grace_time_seconds: "{{ devture_systemd_docker_base_container_stop_grace_time_seconds }}"
+
+# Controls how long the pre-start cleanup should wait for stale container-name release
+# before failing startup explicitly.
+vector_container_cleanup_timeout_seconds: "{{ devture_systemd_docker_base_container_cleanup_timeout_seconds }}"
+
+# Controls the delay between pre-start cleanup retries.
+vector_container_cleanup_retry_delay_seconds: "{{ devture_systemd_docker_base_container_cleanup_retry_delay_seconds }}"
+
+# Shell command used in the systemd pre-start phase to deterministically remove a stale
+# container and wait until Docker releases its name.
+vector_container_cleanup_command: |
+  i=0;
+  while [ "$i" -lt {{ vector_container_cleanup_timeout_seconds }} ]; do
+  {{ devture_systemd_docker_base_host_command_docker }} stop -t {{ vector_container_stop_grace_time_seconds }} {{ vector_identifier }} >/dev/null 2>&1 || true;
+  {{ devture_systemd_docker_base_host_command_docker }} rm -f {{ vector_identifier }} >/dev/null 2>&1 || true;
+  if {{ devture_systemd_docker_base_host_command_docker }} container inspect {{ vector_identifier }} >/dev/null 2>&1; then
+  i=$((i + 1));
+  sleep {{ vector_container_cleanup_retry_delay_seconds }};
+  continue;
+  fi;
+  if {{ devture_systemd_docker_base_host_command_docker }} info >/dev/null 2>&1; then
+  exit 0;
+  fi;
+  echo "Failed to query Docker daemon while cleaning up {{ vector_identifier }}" >&2;
+  exit 1;
+  done;
+  echo "Failed to remove stale container {{ vector_identifier }} after {{ vector_container_cleanup_timeout_seconds }} attempts" >&2;
+  exit 1
+
+# Controls Vector's GraphQL API.
+#
+# The API is disabled by default (matching Vector's upstream default).
+# When enabled, Vector exposes an HTTP `/health` endpoint, a GraphQL endpoint,
+# and an interactive `/playground`. It powers `vector top`/`vector tap`.
+#
+# The API has no authentication of its own. When exposing it, secure it via a
+# reverse proxy (see `vector_container_labels_api_middleware_basic_auth_*`).
+vector_api_enabled: false
 
 # The directory (inside the container) where Vector persists state and buffers data.
 vector_data_dir: /var/lib/vector
@@ -242,8 +318,8 @@ vector_journald_source_enabled: false
 vector_journald_source_host_path: /var/log/journal
 vector_journald_source_in_container_path: /journal
 vector_journald_source_additional_volumes:
-  - {type: bind, src: "{{ vector_journald_source_host_path }}", dst: "{{ vector_journald_source_in_container_path }}", options: readonly}
-  - {type: bind, src: /etc/machine-id, dst: /etc/machine-id, options: readonly}
+  - { type: bind, src: "{{ vector_journald_source_host_path }}", dst: "{{ vector_journald_source_in_container_path }}", options: readonly }
+  - { type: bind, src: /etc/machine-id, dst: /etc/machine-id, options: readonly }
 # Ship only entries from the current boot (plus all new ones as they arrive).
 #
 # Note: Vector rejects `current_boot_only: false` on systemd versions 250-257
@@ -284,7 +360,7 @@ vector_varlog_source_enabled: false
 vector_varlog_source_host_path: /var/log
 vector_varlog_source_in_container_path: /varlog
 vector_varlog_source_additional_volumes:
-  - {type: bind, src: "{{ vector_varlog_source_host_path }}", dst: "{{ vector_varlog_source_in_container_path }}", options: readonly}
+  - { type: bind, src: "{{ vector_varlog_source_host_path }}", dst: "{{ vector_varlog_source_in_container_path }}", options: readonly }
 vector_varlog_source_include:
   - "{{ vector_varlog_source_in_container_path }}/**/*.log"
 # Identify files by inode. Set to `checksum` for Vector's default.
@@ -295,6 +371,12 @@ vector_varlog_source_config:
     type: file
     include: "{{ vector_varlog_source_include }}"
     fingerprint: "{{ vector_varlog_source_fingerprint }}"
+
+########################################################################
+#                                                                      #
+# /Built-in host-log sources (journald / varlog)                       #
+#                                                                      #
+########################################################################
 
 # Default Vector configuration template which covers the generic use case.
 # You can customize it by controlling the various variables inside it.
@@ -326,36 +408,17 @@ vector_configuration_extension: "{{ vector_configuration_extension_yaml | from_y
 # You most likely don't need to touch this variable. Instead, see `vector_configuration_yaml`.
 vector_configuration: "{{ vector_configuration_yaml | from_yaml | combine(vector_configuration_extension, recursive=true) }}"
 
-# Controls how long to wait for the container to stop gracefully before killing it.
-vector_container_stop_grace_time_seconds: "{{ devture_systemd_docker_base_container_stop_grace_time_seconds }}"
+# Controls Vector's log verbosity by setting the `VECTOR_LOG` environment variable.
+# When enabled, the log level is raised to `debug`.
+vector_environment_variables_debugging_enabled: false
 
-# Controls how long the pre-start cleanup should wait for stale container-name release
-# before failing startup explicitly.
-vector_container_cleanup_timeout_seconds: "{{ devture_systemd_docker_base_container_cleanup_timeout_seconds }}"
-
-# Controls the delay between pre-start cleanup retries.
-vector_container_cleanup_retry_delay_seconds: "{{ devture_systemd_docker_base_container_cleanup_retry_delay_seconds }}"
-
-# Shell command used in the systemd pre-start phase to deterministically remove a stale
-# container and wait until Docker releases its name.
-vector_container_cleanup_command: |
-  i=0;
-  while [ "$i" -lt {{ vector_container_cleanup_timeout_seconds }} ]; do
-  {{ devture_systemd_docker_base_host_command_docker }} stop -t {{ vector_container_stop_grace_time_seconds }} {{ vector_identifier }} >/dev/null 2>&1 || true;
-  {{ devture_systemd_docker_base_host_command_docker }} rm -f {{ vector_identifier }} >/dev/null 2>&1 || true;
-  if {{ devture_systemd_docker_base_host_command_docker }} container inspect {{ vector_identifier }} >/dev/null 2>&1; then
-  i=$((i + 1));
-  sleep {{ vector_container_cleanup_retry_delay_seconds }};
-  continue;
-  fi;
-  if {{ devture_systemd_docker_base_host_command_docker }} info >/dev/null 2>&1; then
-  exit 0;
-  fi;
-  echo "Failed to query Docker daemon while cleaning up {{ vector_identifier }}" >&2;
-  exit 1;
-  done;
-  echo "Failed to remove stale container {{ vector_identifier }} after {{ vector_container_cleanup_timeout_seconds }} attempts" >&2;
-  exit 1
+# vector_environment_variables_additional_variables contains a multiline string with additional environment variables to pass to the container.
+#
+# Example:
+# vector_environment_variables_additional_variables: |
+#   VAR=1
+#   ANOTHER=value
+vector_environment_variables_additional_variables: ""
 
 # vector_restart_necessary controls whether the Vector systemd
 # service will be restarted (when true) or merely started (when false) by the

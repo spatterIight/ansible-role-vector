@@ -27,6 +27,20 @@ traefik.http.middlewares.{{ vector_identifier }}-strip-prefix.stripprefix.prefix
 {% set middlewares = middlewares + [vector_identifier + '-strip-prefix'] %}
 {% endif %}
 
+{% if vector_container_labels_traefik_additional_request_headers.keys() | length > 0 %}
+{% for name, value in vector_container_labels_traefik_additional_request_headers.items() %}
+traefik.http.middlewares.{{ vector_identifier }}-add-request-headers.headers.customrequestheaders.{{ name }}={{ value }}
+{% endfor %}
+{% set middlewares = middlewares + [vector_identifier + '-add-request-headers'] %}
+{% endif %}
+
+{% if vector_container_labels_traefik_additional_response_headers.keys() | length > 0 %}
+{% for name, value in vector_container_labels_traefik_additional_response_headers.items() %}
+traefik.http.middlewares.{{ vector_identifier }}-add-response-headers.headers.customresponseheaders.{{ name }}={{ value }}
+{% endfor %}
+{% set middlewares = middlewares + [vector_identifier + '-add-response-headers'] %}
+{% endif %}
+
 traefik.http.routers.{{ vector_identifier }}.rule={{ vector_container_labels_traefik_rule }}
 {% if vector_container_labels_traefik_priority | int > 0 %}
 traefik.http.routers.{{ vector_identifier }}.priority={{ vector_container_labels_traefik_priority }}
@@ -44,4 +58,6 @@ traefik.http.routers.{{ vector_identifier }}.tls.certResolver={{ vector_containe
 traefik.http.services.{{ vector_identifier }}.loadbalancer.server.port={{ vector_container_api_port }}
 {% endif %}
 
-{{ vector_container_labels_additional_labels }}
+{% for arg in vector_container_labels_additional_labels %}
+{{ arg }}
+{% endfor %}

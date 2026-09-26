@@ -34,8 +34,8 @@ ExecStartPre={{ devture_systemd_docker_base_host_command_docker }} create \
       {% endfor %}
       --read-only \
       --network={{ vector_container_network }} \
-      {% if vector_container_api_bind_port %}
-      -p {{ vector_container_api_bind_port }}:{{ vector_container_api_port }} \
+      {% if vector_container_api_host_bind_port %}
+      -p {{ vector_container_api_host_bind_port }}:{{ vector_container_api_port }} \
       {% endif %}
       --env-file={{ vector_base_path }}/env \
       --label-file={{ vector_base_path }}/labels \
@@ -48,7 +48,9 @@ ExecStartPre={{ devture_systemd_docker_base_host_command_docker }} create \
       {{ arg }} \
       {% endfor %}
       {{ vector_container_image }} \
-      --config /etc/vector/vector.yaml
+      {% for arg in vector_process_extra_arguments %}
+      {{ arg }} \
+      {% endfor %}
 
 {% for network in vector_container_additional_networks %}
 ExecStartPre={{ devture_systemd_docker_base_host_command_docker }} network connect {{ network }} {{ vector_identifier }}

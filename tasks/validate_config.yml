@@ -12,7 +12,9 @@
       Please change your configuration to rename the variable (`{{ item.old }}` -> `{{ item.new }}`).
   when: "lookup('ansible.builtin.varnames', ('^' + item.old + '$'), wantlist=True) | length > 0"
   with_items:
-    - { "old": "vector_distro", "new": "vector_distro_variant" }
+    - { "old": "vector_container_image_distribution", "new": "vector_distro_variant" }
+    - { "old": "vector_container_api_bind_port", "new": "vector_container_api_host_bind_port" }
+    - { "old": "vector_debugging_enabled", "new": "vector_environment_variables_debugging_enabled" }
 
 - name: Fail if required Vector settings not defined
   ansible.builtin.fail:
@@ -43,6 +45,13 @@
 - name: Validate Vector Traefik configuration
   when: vector_container_labels_traefik_enabled | bool
   block:
+    - name: (Deprecation) Catch and report Vector labels for Traefik in the old string format
+      ansible.builtin.fail:
+        msg: >-
+          `vector_container_labels_additional_labels` now require a list of strings.
+          Replace `vector_container_labels_additional_labels: |` with `vector_container_labels_additional_labels_custom:` and make each label a list item.
+      when: "vector_container_labels_additional_labels | default([]) is string"
+
     - name: Fail if Traefik settings required for Vector are not defined
       ansible.builtin.fail:
         msg: >-

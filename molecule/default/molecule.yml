@@ -65,7 +65,7 @@ provisioner:
         # this value into both the rendered configuration and the port publish.
         vector_api_enabled: true
         vector_container_api_port: 8687
-        vector_container_api_bind_port: "127.0.0.1:8687"
+        vector_container_api_host_bind_port: "127.0.0.1:8687"
 
         vector_container_extra_arguments:
           - "--label molecule.extra-arguments-reached=yes"
