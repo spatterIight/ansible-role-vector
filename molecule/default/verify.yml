@@ -55,11 +55,9 @@
           changed_when: false
           loop: "{{ vector_verify_units }}"
 
-        ########################################################################
-        #                                                                      #
-        # The deployed version is the one defaults/main.yml asks for           #
-        #                                                                      #
-        ########################################################################
+        # ------------------------------------------------------------------
+        # The deployed version is the one defaults/main.yml asks for
+        # ------------------------------------------------------------------
 
         # The image carries no version label, and Vector's API is gRPC-only apart from
         # `/health`, so the binary inside the running container is the version surface.
@@ -76,11 +74,9 @@
             fail_msg: "Vector reports {{ vector_reported_version.stdout | default('none') }}, expected {{ vector_defaults.vector_version }}"
             success_msg: "Vector reports {{ vector_reported_version.stdout }}"
 
-        ########################################################################
-        #                                                                      #
-        # The rendered configuration is what the process is running on         #
-        #                                                                      #
-        ########################################################################
+        # ------------------------------------------------------------------
+        # The rendered configuration is what the process is running on
+        # ------------------------------------------------------------------
 
         - name: Read the Vector configuration file rendered by the role
           ansible.builtin.slurp:
@@ -136,11 +132,9 @@
               `vector_container_api_port` reaching the process.
             success_msg: "Nothing answers on Vector's stock API port, as expected"
 
-        ########################################################################
-        #                                                                      #
-        # Events actually flow through the pipeline the role rendered          #
-        #                                                                      #
-        ########################################################################
+        # ------------------------------------------------------------------
+        # Events actually flow through the pipeline the role rendered
+        # ------------------------------------------------------------------
 
         - name: Wait for the seeded event to come out of the Vector file sink (up to 150s)
           ansible.builtin.command:
@@ -198,11 +192,9 @@
               {{ vector_molecule_output_path_on_host }}, so the pipeline is not live.
             success_msg: "An event written after start-up travelled through the pipeline"
 
-        ########################################################################
-        #                                                                      #
-        # The container is built the way the role's variables describe it      #
-        #                                                                      #
-        ########################################################################
+        # ------------------------------------------------------------------
+        # The container is built the way the role's variables describe it
+        # ------------------------------------------------------------------
 
         - name: Inspect the Vector container
           ansible.builtin.command:
