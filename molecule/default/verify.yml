@@ -219,19 +219,23 @@
               read-only root filesystem.
             success_msg: "The container runs non-root, capability-less and read-only"
 
-        - name: Assert vector_container_additional_volumes reached the container
+        - name: Collect the mounts the role asked for
+          ansible.builtin.set_fact:
+            vector_molecule_input_mounts: "{{ vector_container.Mounts | selectattr('Destination', 'equalto', vector_molecule_input_container_path) | list }}"
+
+        # vector_container_additional_volumes_custom has been inert in several roles in
+        # this collection - rendered into a comment, or into a `-v` that silently
+        # dropped the options. Both the destination and the readonly option have
+        # to arrive.
+        - name: Assert that vector_container_additional_volumes_custom reached the container
           ansible.builtin.assert:
             that:
               - vector_molecule_input_mounts | length == 1
+              - vector_molecule_input_mounts[0].Type == 'bind'
               - vector_molecule_input_mounts[0].Source == vector_molecule_input_host_path
               - not vector_molecule_input_mounts[0].RW
-            fail_msg: >-
-              {{ vector_molecule_input_container_path }} is not mounted read-only from
-              {{ vector_molecule_input_host_path }}, so
-              `vector_container_additional_volumes` never became a `--mount` argument.
-            success_msg: "The additional volume is mounted read-only, as configured"
-          vars:
-            vector_molecule_input_mounts: "{{ vector_container.Mounts | selectattr('Destination', 'equalto', vector_molecule_input_container_path) | list }}"
+            fail_msg: "The additional volume did not reach the container: {{ vector_container.Mounts }}"
+            success_msg: "The additional volume is mounted read-only at {{ vector_molecule_input_container_path }}"
 
         # ------------------------------------------------------------------
         # Traefik labels
